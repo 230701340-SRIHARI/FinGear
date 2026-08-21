@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: fingear-postgres
+    environment:
+      POSTGRES_USER: fingear
+      POSTGRES_PASSWORD: fingear_dev_password
+      POSTGRES_DB: fingear_ai
+    ports:
+      - "5432:5432"
+    volumes:
+      - fingear_pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    container_name: fingear-backend
+    environment:
+      APP_ENV: development
+      FRONTEND_ORIGIN: http://127.0.0.1:5173
+      DATABASE_URL: postgresql://fingear:fingear_dev_password@postgres:5432/fingear_ai
+      JWT_SECRET: replace-with-a-long-random-secret
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+
+  frontend:
+    build: ./frontend
+    container_name: fingear-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  fingear_pgdata:
