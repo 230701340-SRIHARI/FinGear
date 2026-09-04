@@ -34,6 +34,13 @@ def create_goal(goal: GoalCreate, user_id: str = Depends(get_current_user_id)) -
     return {"created_goal": created_goal, "goals": profile.goals, "analysis": goal_plan(profile)}
 
 
+@router.delete("/{goal_name}")
+def delete_goal(goal_name: str, user_id: str = Depends(get_current_user_id)) -> dict:
+    memory.delete_goal(user_id, goal_name)
+    profile = FinancialProfile(**memory.state_copy(user_id)["profile"])
+    return {"goals": profile.goals, "analysis": goal_plan(profile)}
+
+
 def _parse_target_date(value: str) -> date:
     try:
         return date.fromisoformat(value)

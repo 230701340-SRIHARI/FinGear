@@ -1,36 +1,10 @@
-import {
-  Activity,
-  BadgeHelp,
-  Banknote,
-  BarChart3,
-  Bot,
-  BrainCircuit,
-  BriefcaseBusiness,
-  CalendarClock,
-  ChartNoAxesCombined,
-  ChevronLeft,
-  CircleDollarSign,
-  CreditCard,
-  FileText,
-  Fingerprint,
-  Gauge,
-  Goal,
-  History,
-  Landmark,
-  LineChart,
-  LockKeyhole,
-  PieChart,
-  ReceiptText,
-  Settings,
-  ShieldCheck,
-  SlidersHorizontal,
-  UserRound,
-  WalletCards,
-  WalletMinimal,
-} from "lucide-react";
-import { useState } from "react";
 import { NavLink } from "react-router-dom";
-import { cx } from "../../lib/format";
+import {
+  Activity, BadgeHelp, Bot, BrainCircuit, CalendarClock,
+  ChartNoAxesCombined, CircleDollarSign, CreditCard, FileText,
+  Gauge, Goal, History, Landmark, LineChart, PieChart,
+  ReceiptText, Settings, SlidersHorizontal, UserRound, WalletMinimal
+} from "lucide-react";
 
 const groups = [
   {
@@ -84,34 +58,22 @@ const groups = [
   },
 ];
 
-export function Sidebar({ mobileOpen, onClose }) {
-  const [collapsed, setCollapsed] = useState(false);
+export function MenuOverlay({ onClose }) {
   return (
-    <aside className={cx("side-nav", collapsed && "collapsed", mobileOpen && "mobile-open")}>
-      <div className="brand-block">
-        <div className="brand-orb"><Landmark size={22} /></div>
-        <div>
-          <strong>FinGear AI</strong>
-          <span>AI Financial Intelligence</span>
-        </div>
-        <button className="collapse-button" onClick={() => setCollapsed((value) => !value)} aria-label="Collapse sidebar">
-          <ChevronLeft size={17} />
-        </button>
-      </div>
-
-    <nav className="nav-groups">
+    <div className="menu-overlay" onClick={onClose}>
+      <div className="menu-grid" onClick={e => e.stopPropagation()}>
         {groups.map((group) => (
-          <section key={group.label}>
+          <section key={group.label} className="menu-group">
             <p>{group.label}</p>
             {group.items.map((item) => (
-              <NavLink key={item.to} to={item.to} end onClick={onClose} title={collapsed ? item.label : undefined}>
-                <item.icon size={18} />
+              <NavLink key={item.to} to={item.to} end onClick={onClose} className={({ isActive }) => `menu-link ${isActive ? 'active' : ''}`}>
+                <item.icon size={20} />
                 <span>{item.label}</span>
               </NavLink>
             ))}
           </section>
         ))}
-      </nav>
-    </aside>
+      </div>
+    </div>
   );
 }

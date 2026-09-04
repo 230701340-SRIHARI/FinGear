@@ -4,16 +4,19 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { FinanceProvider } from "./context/FinanceContext.jsx";
+import { ThemeProvider } from "./context/ThemeContext.jsx";
 import "./styles/app.css";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
-      <AuthProvider>
-        <FinanceProvider>
-          <App />
-        </FinanceProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <FinanceProvider>
+            <App />
+          </FinanceProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   </React.StrictMode>
 );

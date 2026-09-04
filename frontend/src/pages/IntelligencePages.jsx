@@ -1,7 +1,7 @@
-import { Activity, Bot, BrainCircuit, FileText, LineChart, MessageSquare, ShieldAlert, Sparkles, TrendingUp } from "lucide-react";
-import { useState } from "react";
+import { Activity, Bot, BrainCircuit, CircleDollarSign, FileText, Goal, LineChart, MessageSquare, ShieldAlert, Sparkles, SlidersHorizontal, TrendingUp } from "lucide-react";
+import { useState, useEffect } from "react";
 import { HealthTrendChart, NetWorthChart, ScoreRadial } from "../components/charts";
-import { Badge, Button, Card, EmptyState, Field, MetricCard, PageHeader, Progress } from "../components/ui";
+import { Badge, Button, Card, EmptyState, Field, MetricCard, PageHeader, Progress, QuickLinks } from "../components/ui";
 import { useFinance } from "../context/FinanceContext";
 import { currency } from "../lib/format";
 
@@ -17,23 +17,46 @@ export function Health() {
       <Card>
         <div className="health-components">{(health?.components || []).map((item) => <article key={item.label}><div><strong>{item.label}</strong><span>{item.reason}</span></div><b>{item.value}/100</b><Progress value={item.value} tone={item.value >= 70 ? "success" : "warning"} /></article>)}</div>
       </Card>
+      <QuickLinks links={[
+        { to: '/forecast', icon: LineChart, label: 'Forecast', detail: 'See future trajectory' },
+        { to: '/simulator', icon: CircleDollarSign, label: 'Simulator', detail: 'Test ways to improve score' },
+        { to: '/goals', icon: Goal, label: 'Goals', detail: 'Check goal feasibility' },
+        { to: '/budget', icon: SlidersHorizontal, label: 'Budget', detail: 'Control spending habits' },
+      ]} />
     </>
   );
 }
 
 export function Forecast() {
-  const { forecast } = useFinance();
+  const { forecast, fetchForecast } = useFinance();
   const [period, setPeriod] = useState(24);
+
+  useEffect(() => {
+    fetchForecast(period);
+  }, [period]);
+
   return (
     <>
-      <PageHeader eyebrow="Predictive analytics" title="Financial Forecast" subtitle="Projected financial trajectory based on current behavior. Current output is labelled baseline projection, not trained ML." actions={<select value={period} onChange={(e) => setPeriod(Number(e.target.value))}>{[6,12,24,36,60].map((m) => <option key={m}>{m}</option>)}</select>} />
-      <section className="metric-grid">
-        <MetricCard icon={<LineChart />} label="Model" value={forecast.mode} detail={forecast.model_version || "baseline-v1"} tone="info" />
-        <MetricCard icon={<Activity />} label="Confidence" value={`${forecast.confidence || 84}%`} detail="Assumption confidence" tone="ai" />
-        <MetricCard icon={<ShieldAlert />} label="ML metrics" value="Pending" detail={forecast.metrics?.note || "No trained dataset yet"} tone="warning" />
-      </section>
-      <Card><NetWorthChart data={forecast.months?.slice(0, period) || []} /></Card>
+      <PageHeader 
+        eyebrow="Predictive analytics" 
+        title="Financial Forecast" 
+        subtitle="Projected financial trajectory based on current behavior. Current output is labelled baseline projection, not trained ML." 
+        actions={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Badge tone="ai">Confidence: {forecast.confidence || 84}%</Badge>
+            <select value={period} onChange={(e) => setPeriod(Number(e.target.value))}>
+              {[6,12,24,36,60].map((m) => <option value={m} key={m}>{m} months</option>)}
+            </select>
+          </div>
+        } 
+      />
+      <Card><NetWorthChart data={forecast.months || []} /></Card>
       <Card><div className="section-title">Forecast assumptions</div><div className="state-list">{Object.entries(forecast.assumptions || {}).map(([key, value]) => <span key={key}>{key.replaceAll("_", " ")}: {value}</span>)}</div></Card>
+      <QuickLinks links={[
+        { to: '/health', icon: Activity, label: 'Health Score', detail: 'Current financial health' },
+        { to: '/simulator', icon: CircleDollarSign, label: 'Simulator', detail: 'Test different scenarios' },
+        { to: '/goals', icon: Goal, label: 'Goals', detail: 'Goal achievement analysis' },
+      ]} />
     </>
   );
 }
@@ -69,10 +92,28 @@ export function Copilot() {
 
 export function Insights() {
   const { insights } = useFinance();
+  
+  const sortedInsights = [...(insights.insights || [])].sort((a, b) => {
+    const priority = { risk: 1, danger: 1, warning: 2, info: 3, success: 4 };
+    return (priority[a.severity] || 5) - (priority[b.severity] || 5);
+  });
+
   return (
     <>
       <PageHeader eyebrow="AI Insights" title="Automated financial intelligence center" subtitle="Risks, opportunities and behavior changes generated from your financial twin." />
-      <section className="insight-grid">{insights.insights?.map((item) => <Card key={item.title}><Badge tone={item.severity === "risk" ? "danger" : item.severity}>{item.severity}</Badge><h2>{item.title}</h2><p><strong>Reason:</strong> {item.reason}</p><p><strong>Impact:</strong> {item.impact}</p><p><strong>Action:</strong> {item.action}</p></Card>)}</section>
+      <section className="insight-grid">
+        {sortedInsights.map((item) => (
+          <Card key={item.title}>
+            <Badge tone={item.severity === "risk" ? "danger" : item.severity}>{item.severity}</Badge>
+            <h2 style={{ fontSize: '17px', fontWeight: 600, margin: '12px 0 8px', letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>{item.title}</h2>
+            <div style={{ display: 'grid', gap: '8px', fontSize: '14px', color: 'var(--text-secondary)' }}>
+              <p><strong>Reason:</strong> {item.reason}</p>
+              <p><strong>Impact:</strong> {item.impact}</p>
+              <p style={{ marginTop: '4px', borderTop: '1px solid var(--border-color)', paddingTop: '8px', color: 'var(--text-primary)' }}><strong>Action:</strong> {item.action}</p>
+            </div>
+          </Card>
+        ))}
+      </section>
     </>
   );
 }

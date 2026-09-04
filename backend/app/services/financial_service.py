@@ -4,6 +4,7 @@ from collections import defaultdict
 
 from app.schemas.finance import FinancialProfile, Scenario
 from app.services.finance_engine import forecast, goal_plan, health_score, monthly_cash_flow, simulate, total_expenses
+from app.ml.advanced_models import advanced_ml
 
 
 def currency_compact(value: float) -> str:
@@ -100,14 +101,17 @@ def transaction_summary(transactions: list[dict]) -> dict:
     }
 
 
-def budget_coach(budgets: list[dict]) -> dict:
+def budget_coach(profile: FinancialProfile, budgets: list[dict]) -> dict:
+    trend = advanced_ml.predict_expense_trend(profile)
+    trend_msg = f" (ML projects expenses will be {trend:.1f}x normal based on current profile)." if trend > 1.05 or trend < 0.95 else ""
+
     over = [item for item in budgets if item["actual"] > item["planned"]]
     if not over:
-        return {"status": "healthy", "message": "All tracked categories are within budget."}
+        return {"status": "healthy", "message": f"All tracked categories are within budget.{trend_msg}"}
     largest = max(over, key=lambda item: item["actual"] - item["planned"])
     return {
         "status": "attention",
-        "message": f"You are trending ₹{largest['actual'] - largest['planned']:,.0f} above your {largest['category']} budget this month.",
+        "message": f"You are trending ₹{largest['actual'] - largest['planned']:,.0f} above your {largest['category']} budget this month.{trend_msg}",
     }
 
 
@@ -118,7 +122,7 @@ def build_insights(profile: FinancialProfile, budgets: list[dict]) -> list[dict]
         {"severity": "warning", "title": "Emergency fund below target", "reason": f"Runway is {emergency_runway(profile):.1f} months.", "impact": "Reduced shock absorption", "action": "Prioritize emergency savings."},
         {"severity": "info", "title": "Investment consistency detected", "reason": "Monthly contributions are stable in demo data.", "impact": "Better long-term compounding", "action": "Review allocation quarterly."},
     ]
-    coach = budget_coach(budgets)
+    coach = budget_coach(profile, budgets)
     if coach["status"] == "attention":
         insights.insert(0, {"severity": "risk", "title": "Budget exceeded", "reason": coach["message"], "impact": "Lower monthly surplus", "action": "Reduce flexible spending this month."})
     return insights

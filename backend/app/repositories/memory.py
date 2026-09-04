@@ -184,6 +184,21 @@ def add_goal(user_id: str, goal: dict) -> dict:
     return deepcopy(goal)
 
 
+def delete_goal(user_id: str, goal_name: str) -> None:
+    goals = get_state(user_id)["profile"]["goals"]
+    get_state(user_id)["profile"]["goals"] = [g for g in goals if g["name"] != goal_name]
+
+
+def delete_transaction(user_id: str, transaction_id: str) -> None:
+    txns = get_state(user_id)["transactions"]
+    get_state(user_id)["transactions"] = [t for t in txns if str(t.get("id")) != str(transaction_id)]
+
+
+def delete_simulation(user_id: str, sim_id: str) -> None:
+    history = get_state(user_id)["simulation_history"]
+    get_state(user_id)["simulation_history"] = [h for h in history if str(h.get("id")) != str(sim_id)]
+
+
 def add_simulation(user_id: str, simulation: dict) -> dict:
     history_item = {
         "id": str(uuid4()),

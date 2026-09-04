@@ -3,7 +3,7 @@ import { AppShell } from "./components/layout/AppShell";
 import { useAuth } from "./context/AuthContext";
 import { Login, Register, ForgotPassword, OAuthCallback } from "./pages/AuthPages";
 import { Dashboard, FinancialTwin, Help, MyMoney } from "./pages/OverviewPages";
-import { Profile, SettingsPage, SecurityPage } from "./pages/AccountPages";
+import { Profile, SettingsPage } from "./pages/AccountPages";
 import { Transactions, Budget, Goals, Investments, Debt } from "./pages/MoneyPages";
 import { Health, Forecast, Copilot, Insights, Timeline, Reports } from "./pages/IntelligencePages";
 import { Simulator, ScenarioHistory } from "./pages/SimulatorPages";
@@ -41,7 +41,6 @@ export default function App() {
         <Route path="/timeline" element={<Timeline />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/settings/security" element={<SecurityPage />} />
         <Route path="/help" element={<Help />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

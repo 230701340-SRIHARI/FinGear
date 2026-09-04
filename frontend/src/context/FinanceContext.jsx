@@ -15,12 +15,26 @@ const initialData = {
   goals: { goals: demoProfile.goals, analysis: [] },
   investments: { items: [], allocation: [], total: 0, monthly_contribution: 0 },
   debt: { items: [], total: 0, monthly_emi: 0, debt_to_income: 0 },
-  insights: { insights: [] },
-  timeline: { events: [] },
-  reports: { reports: [] },
+  insights: { insights: [
+    {"severity": "success", "title": "Savings rate improved", "reason": "Current savings rate is 32%.", "impact": "More goal capacity", "action": "Keep automated savings active."},
+    {"severity": "warning", "title": "Emergency fund below target", "reason": "Runway is 3.1 months.", "impact": "Reduced shock absorption", "action": "Prioritize emergency savings."},
+    {"severity": "info", "title": "Investment consistency detected", "reason": "Monthly contributions are stable.", "impact": "Better long-term compounding", "action": "Review allocation quarterly."}
+  ]},
+  timeline: { events: [
+    {"period": "This Month", "title": "Started car fund", "value": "₹12,000", "type": "Goal Creation"},
+    {"period": "Last Month", "title": "Increased SIP", "value": "₹5,000", "type": "Investment"}
+  ]},
+  reports: { reports: [
+    {"name": "Monthly Financial Report", "status": "Ready", "summary": "Income, expenses, cash flow and score breakdown."},
+    {"name": "Financial Health Report", "status": "Ready", "summary": "Explainable component-level health assessment."},
+    {"name": "Forecast Report", "status": "Ready", "summary": "Baseline projection using current behavior assumptions."},
+    {"name": "PDF Export", "status": "Planned", "summary": "Export is documented as future work."}
+  ]},
   settings: null,
   security: null,
-  scenarioHistory: { history: [] },
+  scenarioHistory: { history: [
+    {"id": "1", "name": "Increase salary and SIP", "date": "Oct 12", "result": "Net worth +12%", "score": "+4"}
+  ]},
   copilotContext: { conversations: [] },
 };
 
@@ -107,6 +121,26 @@ export function FinanceProvider({ children }) {
     await refresh();
   }
 
+  async function deleteTransaction(id) {
+    setError("");
+    try {
+      await api.deleteTransaction(id);
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not delete this transaction.");
+    }
+  }
+
+  async function deleteSimulation(id) {
+    setError("");
+    try {
+      await api.deleteSimulation(id);
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not delete this simulation.");
+    }
+  }
+
   async function addGoal(goal) {
     setError("");
     const created = await api.createGoal(goal);
@@ -117,6 +151,33 @@ export function FinanceProvider({ children }) {
     }));
     await refresh();
     return created;
+  }
+
+  async function deleteGoal(goalName) {
+    setError("");
+    try {
+      const result = await api.deleteGoal(goalName);
+      setData((current) => ({
+        ...current,
+        goals: { goals: result.goals, analysis: result.analysis },
+        profile: { ...current.profile, goals: result.goals },
+      }));
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not delete this goal.");
+    }
+  }
+
+  async function fetchForecast(period) {
+    try {
+      const forecastData = await api.forecast(period);
+      setData((current) => ({
+        ...current,
+        forecast: forecastData
+      }));
+    } catch (err) {
+      console.error("Failed to fetch forecast:", err);
+    }
   }
 
   async function runSimulation(scenario) {
@@ -134,7 +195,7 @@ export function FinanceProvider({ children }) {
   }, [token]);
 
   const value = useMemo(
-    () => ({ ...data, loading, error, refresh, saveProfile, addTransaction, addGoal, runSimulation, askCopilot }),
+    () => ({ ...data, loading, error, refresh, saveProfile, addTransaction, deleteTransaction, deleteSimulation, addGoal, deleteGoal, fetchForecast, runSimulation, askCopilot }),
     [data, loading, error]
   );
 

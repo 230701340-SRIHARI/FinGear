@@ -111,15 +111,21 @@ def goal_plan(profile: FinancialProfile) -> list[dict]:
     available_for_goals = cash_flow * 0.55
     results = []
     for goal in profile.goals:
-        results.append(_goal_projection(goal, available_for_goals))
+        results.append(_goal_projection(goal, available_for_goals, profile))
     return results
 
 
-def _goal_projection(goal: Goal, available_monthly: float) -> dict:
+def _goal_projection(goal: Goal, available_monthly: float, profile: FinancialProfile = None) -> dict:
     gap = max(goal.target_amount - goal.current_amount, 0)
     required_monthly = gap / goal.target_months
     planned_monthly = goal.monthly_contribution if goal.monthly_contribution > 0 else available_monthly
     probability = 100 / (1 + exp(-(planned_monthly - required_monthly) / max(required_monthly * 0.25, 1)))
+    
+    if profile:
+        from app.ml.advanced_models import advanced_ml
+        ml_feasibility = advanced_ml.predict_goal_feasibility(profile) * 100
+        probability = (probability * 0.6) + (ml_feasibility * 0.4)
+    
     expected_months = None if planned_monthly <= 0 else round(gap / planned_monthly)
     return {
         "name": goal.name,

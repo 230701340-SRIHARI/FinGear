@@ -152,7 +152,7 @@ backend/app/database/schema.sql
 
 Tables include users, financial profiles, transactions, budgets, goals, investments, debts, health scores, forecasts, simulations, copilot conversations, notifications and financial events. Each financial entity belongs to a user.
 
-Current local development uses an in-memory repository so startup does not fail if PostgreSQL is not running.
+PostgreSQL models and SQLAlchemy have been integrated. The application gracefully falls back to in-memory state for UI demonstrations if the database is unreachable or `DATABASE_URL` is unset, to ensure the demo always runs smoothly.
 
 ## Docker
 
@@ -170,14 +170,17 @@ The Copilot reads current profile, health score, goals and forecast context befo
 
 ## ML Configuration
 
-Forecasting is currently labelled **Baseline projection**. It does not falsely claim XGBoost or Random Forest is active. The backend includes `backend/app/ml/forecasting.py` so a real trained model can later replace the baseline interface and expose MAE, RMSE and R2 after evaluation.
+Forecasting is now powered by trained Machine Learning models (Random Forest). The `ForecastEngine` dynamically blends machine learning output with baseline projections. The Health Score Engine uses a dual system combining a rule-based explainability layer with an ML prediction overlay.
 
-Optional ML packages:
+The models have been trained on synthetic financial data to demonstrate architecture readiness. 
+
+To retrain the models:
 
 ```powershell
 cd backend
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements-ml.txt
+python scripts/train_models.py
 ```
 
 ## Research Contribution
@@ -186,7 +189,7 @@ FinGear AI demonstrates:
 
 - Explainable financial health assessment
 - Behavioral financial analytics
-- Predictive baseline forecasting
+- Predictive ML-based forecasting
 - Large Language Model based financial assistance
 - What-if financial decision simulation
 - Digital Twin based personal finance decision support
@@ -194,9 +197,7 @@ FinGear AI demonstrates:
 ## Limitations
 
 - Bank integration is not implemented.
-- Forecasting is baseline, not trained ML yet.
 - PDF export is marked planned.
-- PostgreSQL schema exists, but local development currently uses in-memory storage.
 - AI responses are educational analysis, not guaranteed financial advice.
 
 ## Future Scope

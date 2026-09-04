@@ -18,3 +18,9 @@ def run_simulation(payload: SimulationRequest, user_id: str = Depends(get_curren
 @router.get("/history")
 def simulation_history(user_id: str = Depends(get_current_user_id)) -> dict:
     return {"history": memory.state_copy(user_id)["simulation_history"]}
+
+
+@router.delete("/history/{sim_id}")
+def delete_simulation(sim_id: str, user_id: str = Depends(get_current_user_id)) -> dict:
+    memory.delete_simulation(user_id, sim_id)
+    return {"history": memory.state_copy(user_id)["simulation_history"]}

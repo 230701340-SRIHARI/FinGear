@@ -1,4 +1,5 @@
 import { Loader2 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { cx } from "../lib/format";
 
 export function Card({ className, children, glow = false }) {
@@ -86,3 +87,38 @@ export function Field({ label, children }) {
     </label>
   );
 }
+
+export function QuickLinks({ links = [] }) {
+  return (
+    <div className="quick-links">
+      {links.map((link) => (
+        <Link key={link.to} to={link.to} className="quick-link">
+          {link.icon && <link.icon size={16} />}
+          <div>
+            <strong>{link.label}</strong>
+            {link.detail && <span>{link.detail}</span>}
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+export function ConfirmModal({ isOpen, title = "Confirm Action", message = "Are you sure you want to delete this item?", onConfirm, onCancel, confirmText = "Delete" }) {
+  if (!isOpen) return null;
+  return (
+    <div className="modal-backdrop" onClick={onCancel}>
+      <Card className="modal-card confirm-modal" onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ margin: "0 0 8px", fontSize: "18px", color: "var(--text-primary)" }}>{title}</h3>
+        <p style={{ margin: "0 0 20px", fontSize: "14px", color: "var(--text-secondary)" }}>{message}</p>
+        <div className="form-actions" style={{ justifyContent: "flex-end", gap: "10px" }}>
+          <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+          <Button variant="primary" style={{ background: "var(--accent-danger)", borderColor: "var(--accent-danger)" }} onClick={onConfirm}>
+            {confirmText}
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
