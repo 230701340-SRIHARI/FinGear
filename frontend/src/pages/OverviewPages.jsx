@@ -1,5 +1,5 @@
-import { Activity, ArrowRight, BrainCircuit, CircleDollarSign, CreditCard, Gauge, Goal, IndianRupee, Landmark, LineChart, Network, PieChart, ShieldCheck, SlidersHorizontal, Sparkles, TrendingUp, WalletCards } from "lucide-react";
-import { useMemo } from "react";
+import { Activity, ArrowRight, BrainCircuit, CircleDollarSign, Cpu, CreditCard, Gauge, Goal, IndianRupee, Landmark, LineChart, Network, PieChart, Plus, ShieldCheck, SlidersHorizontal, Sparkles, TrendingUp, WalletCards } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AllocationChart, HealthTrendChart, IncomeExpenseChart, NetWorthChart } from "../components/charts";
 import { Badge, Button, Card, MetricCard, PageHeader, Progress, QuickLinks } from "../components/ui";
@@ -7,9 +7,27 @@ import { useFinance } from "../context/FinanceContext";
 import { currency } from "../lib/format";
 
 export function Dashboard() {
-  const { dashboard, health, loading } = useFinance();
+  const { dashboard, health, loading, aiForecast, aiAnomalies, addTransaction } = useFinance();
   const kpis = dashboard?.kpis || [];
   const charts = dashboard?.charts || {};
+  const forecastReady = aiForecast && aiForecast.status !== "learning";
+
+  const [quickLog, setQuickLog] = useState({ amount: "", description: "", category: "Food" });
+  const [logging, setLogging] = useState(false);
+
+  async function handleQuickLog(e) {
+    e.preventDefault();
+    if (!quickLog.amount || !quickLog.description) return;
+    setLogging(true);
+    await addTransaction({
+      ...quickLog,
+      type: "expense",
+      date: new Date().toISOString().split("T")[0],
+      amount: Number(quickLog.amount)
+    });
+    setQuickLog({ amount: "", description: "", category: "Food" });
+    setLogging(false);
+  }
 
   const kpiCards = useMemo(() => kpis.map((kpi) => (
     <MetricCard key={kpi.label} icon={<Gauge />} label={kpi.label} value={kpi.value} detail={kpi.detail} tone={kpi.tone} />
@@ -46,7 +64,47 @@ export function Dashboard() {
 
       <section className="metric-grid six">
         {kpiCards}
+        <MetricCard
+          icon={<Cpu />}
+          label="AI Predicted Spend"
+          value={forecastReady ? currency(aiForecast.predicted_tomorrow) : "Learning..."}
+          detail={forecastReady ? `${aiForecast.confidence}% confidence` : aiForecast?.status_message || "Collecting data"}
+          tone="ai"
+        />
       </section>
+
+      <Card glow>
+        <div className="section-title" style={{ marginBottom: "16px" }}><Plus /> Quick Log Expense</div>
+        <form onSubmit={handleQuickLog} style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: "200px" }}>
+            <label className="field">
+              <span>Description</span>
+              <input required placeholder="E.g. Coffee" value={quickLog.description} onChange={(e) => setQuickLog({ ...quickLog, description: e.target.value })} />
+            </label>
+          </div>
+          <div style={{ flex: 1, minWidth: "150px" }}>
+            <label className="field">
+              <span>Amount (₹)</span>
+              <input required type="number" placeholder="0" value={quickLog.amount} onChange={(e) => setQuickLog({ ...quickLog, amount: e.target.value })} />
+            </label>
+          </div>
+          <div style={{ flex: 1, minWidth: "150px" }}>
+            <label className="field">
+              <span>Category</span>
+              <select value={quickLog.category} onChange={(e) => setQuickLog({ ...quickLog, category: e.target.value })}>
+                <option value="Food">Food</option>
+                <option value="Shopping">Shopping</option>
+                <option value="Transport">Transport</option>
+                <option value="Utilities">Utilities</option>
+                <option value="Other">Other</option>
+              </select>
+            </label>
+          </div>
+          <Button disabled={logging} style={{ marginBottom: "2px" }}>
+            {logging ? "Saving..." : "Log Expense"}
+          </Button>
+        </form>
+      </Card>
 
       <section className="grid-2">
         <Card><div className="section-title"><TrendingUp /> Net worth timeline</div><NetWorthChart data={charts.net_worth || []} /></Card>
@@ -58,6 +116,7 @@ export function Dashboard() {
       <QuickLinks links={[
         { to: '/health', icon: Activity, label: 'Health Score', detail: 'View detailed breakdown' },
         { to: '/forecast', icon: LineChart, label: 'Forecast', detail: 'See projected trajectory' },
+        { to: '/ai', icon: Cpu, label: 'AI Engine', detail: 'Forecasting & anomaly detection' },
         { to: '/goals', icon: Goal, label: 'Goals', detail: 'Track goal progress' },
         { to: '/simulator', icon: CircleDollarSign, label: 'Simulator', detail: 'Test financial decisions' },
       ]} />

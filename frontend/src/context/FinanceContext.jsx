@@ -36,6 +36,9 @@ const initialData = {
     {"id": "1", "name": "Increase salary and SIP", "date": "Oct 12", "result": "Net worth +12%", "score": "+4"}
   ]},
   copilotContext: { conversations: [] },
+  aiStatus: null,
+  aiForecast: null,
+  aiAnomalies: { anomalies: [], count: 0 },
 };
 
 export function FinanceProvider({ children }) {
@@ -66,6 +69,9 @@ export function FinanceProvider({ children }) {
         security,
         scenarioHistory,
         copilotContext,
+        aiStatus,
+        aiForecast,
+        aiAnomalies,
       ] = await Promise.all([
         api.profile(),
         api.dashboard(),
@@ -83,6 +89,9 @@ export function FinanceProvider({ children }) {
         api.security(),
         api.simulationHistory(),
         api.copilotContext(),
+        api.ai.status().catch(() => null),
+        api.ai.forecast().catch(() => null),
+        api.ai.anomalies().catch(() => ({ anomalies: [], count: 0 })),
       ]);
       setData({
         profile,
@@ -101,6 +110,9 @@ export function FinanceProvider({ children }) {
         security,
         scenarioHistory,
         copilotContext,
+        aiStatus,
+        aiForecast,
+        aiAnomalies,
       });
     } catch {
       setError("Backend unavailable. Local sample data remains visible.");
@@ -190,12 +202,32 @@ export function FinanceProvider({ children }) {
     return api.copilot(question, data.profile);
   }
 
+  async function acknowledgeAnomaly(txnId) {
+    setError("");
+    try {
+      await api.ai.acknowledge(txnId);
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not acknowledge anomaly.");
+    }
+  }
+
+  async function resetAI() {
+    setError("");
+    try {
+      await api.ai.reset();
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not reset AI engine.");
+    }
+  }
+
   useEffect(() => {
     refresh();
   }, [token]);
 
   const value = useMemo(
-    () => ({ ...data, loading, error, refresh, saveProfile, addTransaction, deleteTransaction, deleteSimulation, addGoal, deleteGoal, fetchForecast, runSimulation, askCopilot }),
+    () => ({ ...data, loading, error, refresh, saveProfile, addTransaction, deleteTransaction, deleteSimulation, addGoal, deleteGoal, fetchForecast, runSimulation, askCopilot, acknowledgeAnomaly, resetAI }),
     [data, loading, error]
   );
 

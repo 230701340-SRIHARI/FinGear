@@ -215,3 +215,31 @@ def add_conversation(user_id: str, question: str, answer: str) -> dict:
     item = {"id": str(uuid4()), "date": str(date.today()), "question": question, "answer": answer}
     get_state(user_id)["copilot_conversations"].insert(0, item)
     return deepcopy(item)
+
+
+def acknowledge_transaction(user_id: str, transaction_id: str) -> None:
+    """Mark a transaction as acknowledged (human-in-the-loop anomaly feedback)."""
+    txns = get_state(user_id)["transactions"]
+    for txn in txns:
+        if str(txn.get("id")) == str(transaction_id):
+            txn["acknowledged"] = True
+            txn.pop("anomaly_flag", None)
+            txn.pop("anomaly_score", None)
+            break
+
+
+def flag_transaction_anomaly(user_id: str, transaction_id: str, score: float) -> None:
+    """Attach anomaly flag and score to a transaction."""
+    txns = get_state(user_id)["transactions"]
+    for txn in txns:
+        if str(txn.get("id")) == str(transaction_id):
+            txn["anomaly_flag"] = True
+            txn["anomaly_score"] = score
+            break
+
+
+def get_transactions_by_category(user_id: str, categories: list[str]) -> list[dict]:
+    """Get transactions filtered by a list of category names."""
+    txns = get_state(user_id)["transactions"]
+    return [deepcopy(t) for t in txns if t.get("category") in categories]
+

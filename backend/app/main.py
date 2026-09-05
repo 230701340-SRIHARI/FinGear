@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, budget, copilot, dashboard, debt, forecast, goals, health, insights, investments, profile, reports, routes, settings as settings_api, simulator, timeline, transactions
+from app.api import ai, auth, budget, copilot, dashboard, debt, forecast, goals, health, insights, investments, profile, reports, routes, settings as settings_api, simulator, timeline, transactions
 from app.core.config import settings
 
 app = FastAPI(title=settings.app_name)
@@ -31,6 +31,7 @@ app.include_router(insights.router, prefix="/api")
 app.include_router(timeline.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(settings_api.router, prefix="/api")
+app.include_router(ai.router, prefix="/api")
 
 
 @app.get("/")

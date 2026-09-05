@@ -7,6 +7,7 @@ import { Profile, SettingsPage } from "./pages/AccountPages";
 import { Transactions, Budget, Goals, Investments, Debt } from "./pages/MoneyPages";
 import { Health, Forecast, Copilot, Insights, Timeline, Reports } from "./pages/IntelligencePages";
 import { Simulator, ScenarioHistory } from "./pages/SimulatorPages";
+import { AiInsights } from "./pages/AiInsightsPage";
 
 function ProtectedRoute() {
   const { authReady, isAuthenticated } = useAuth();
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="/timeline" element={<Timeline />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/ai" element={<AiInsights />} />
         <Route path="/help" element={<Help />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 import {
   Activity, BadgeHelp, Bot, BrainCircuit, CalendarClock,
-  ChartNoAxesCombined, CircleDollarSign, CreditCard, FileText,
+  ChartNoAxesCombined, CircleDollarSign, Cpu, CreditCard, FileText,
   Gauge, Goal, History, Landmark, LineChart, PieChart,
   ReceiptText, Settings, SlidersHorizontal, UserRound, WalletMinimal
 } from "lucide-react";
@@ -20,6 +20,7 @@ const groups = [
     items: [
       { to: "/health", label: "Financial Health", icon: Activity },
       { to: "/forecast", label: "Forecast", icon: LineChart },
+      { to: "/ai", label: "AI Engine", icon: Cpu },
       { to: "/insights", label: "AI Insights", icon: ChartNoAxesCombined },
       { to: "/copilot", label: "AI Copilot", icon: Bot },
     ],

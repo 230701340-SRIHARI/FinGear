@@ -12,7 +12,7 @@ function defaultTargetDate() {
 }
 
 export function Transactions() {
-  const { transactions, addTransaction, deleteTransaction } = useFinance();
+  const { transactions, addTransaction, deleteTransaction, acknowledgeAnomaly } = useFinance();
   const [showForm, setShowForm] = useState(false);
   const [query, setQuery] = useState("");
   const [deletingId, setDeletingId] = useState(null);
@@ -45,12 +45,25 @@ export function Transactions() {
         {rows.length ? (
           <div className="data-table">
             {rows.map((txn) => (
-              <article key={txn.id}>
+              <article key={txn.id} className={txn.anomaly_flag ? "anomaly-row" : ""}>
                 <span>{txn.date}</span>
                 <strong>{txn.description}</strong>
                 <span>{txn.category}</span>
                 <Badge tone={txn.type === "income" ? "success" : "warning"}>{txn.type}</Badge>
                 <b>{currency(txn.amount)}</b>
+                {txn.anomaly_flag && (
+                  <Badge tone="danger" title={`Anomaly score: ${((txn.anomaly_score || 0) * 100).toFixed(1)}%`}>⚠ Anomaly</Badge>
+                )}
+                {txn.anomaly_flag && !txn.acknowledged && (
+                  <button
+                    className="icon-button"
+                    style={{ color: "var(--accent-success)", fontSize: "12px" }}
+                    title="Acknowledge — This is normal spending"
+                    onClick={() => acknowledgeAnomaly(txn.id)}
+                  >
+                    ✓ OK
+                  </button>
+                )}
                 <button
                   className="icon-button"
                   style={{ color: "var(--accent-danger)" }}

@@ -50,7 +50,13 @@ export function Forecast() {
           </div>
         } 
       />
-      <Card><NetWorthChart data={forecast.months || []} /></Card>
+      <Card>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div className="section-title" style={{ margin: 0 }}>Projected Net Worth</div>
+          <Badge tone="info">Forecast starts from {new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}</Badge>
+        </div>
+        <NetWorthChart data={forecast.months || []} />
+      </Card>
       <Card><div className="section-title">Forecast assumptions</div><div className="state-list">{Object.entries(forecast.assumptions || {}).map(([key, value]) => <span key={key}>{key.replaceAll("_", " ")}: {value}</span>)}</div></Card>
       <QuickLinks links={[
         { to: '/health', icon: Activity, label: 'Health Score', detail: 'Current financial health' },

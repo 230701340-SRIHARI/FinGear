@@ -64,4 +64,13 @@ export const api = {
   reports: () => get("/reports"),
   settings: () => get("/settings"),
   security: () => get("/settings/security"),
+  ai: {
+    status: () => get("/ai/status"),
+    forecast: () => get("/ai/forecast"),
+    anomalies: () => get("/ai/anomalies"),
+    acknowledge: (txnId) => post(`/ai/anomalies/${encodeURIComponent(txnId)}/acknowledge`),
+    weights: () => get("/ai/weights"),
+    reset: () => request("/ai/reset", { method: "POST" }),
+  },
 };
+
