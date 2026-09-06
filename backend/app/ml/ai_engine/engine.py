@@ -39,17 +39,13 @@ class _UserAIState:
         if result:
             forecast_weights, multiverse_weights = result
             self.forecast_brain.weights = forecast_weights
-            for name in UNIVERSE_NAMES:
-                if name in multiverse_weights:
-                    self.anomaly_manager.set_autoencoder_weights(name, multiverse_weights[name])
+            for name, weights in multiverse_weights.items():
+                self.anomaly_manager.set_autoencoder_weights(name, weights)
         self.loaded = True
 
     def save_weights(self):
         """Persist current weights to disk."""
-        multiverse = {
-            name: self.anomaly_manager.get_autoencoder_weights(name)
-            for name in UNIVERSE_NAMES
-        }
+        multiverse = {name: self.anomaly_manager.get_autoencoder_weights(name) for name in self.anomaly_manager.universe_names()}
         weight_store.save_weights(self.user_id, self.forecast_brain.weights, multiverse)
 
 
@@ -139,10 +135,10 @@ class AIEngine:
 
         anomalies = []
         for txn in transactions:
-            if txn.get("type") != "expense":
+            if txn.get("type") != "expense" or txn.get("model_training_excluded") or txn.get("deleted_at"):
                 continue
             result = state.anomaly_manager.detect(txn)
-            if result.is_anomaly:
+            if result.is_anomaly and not txn.get("model_training_excluded"):
                 anomalies.append({
                     "transaction": txn,
                     "anomaly": {

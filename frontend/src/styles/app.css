@@ -518,7 +518,7 @@ a { color: inherit; text-decoration: none; }
 .data-table, .budget-list, .health-components, .profile-sections, .timeline, .report-grid, .insight-grid, .goal-planner-grid { display: grid; gap: 14px; }
 .data-table article {
   display: grid;
-  grid-template-columns: 120px minmax(170px, 1fr) repeat(3, minmax(90px, auto));
+  grid-template-columns: 105px minmax(150px, 1fr) 110px 82px 110px auto auto;
   align-items: center;
   gap: 12px;
   border: 1px solid var(--border-color);
@@ -526,7 +526,14 @@ a { color: inherit; text-decoration: none; }
   padding: 14px 18px;
   background: var(--bg-surface);
 }
-.table-toolbar { display: grid; grid-template-columns: 1fr auto; gap: 12px; margin-bottom: 16px; }
+.table-toolbar { display: grid; grid-template-columns: minmax(180px, 1fr) 150px auto; gap: 12px; margin-bottom: 16px; }
+.transaction-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--border-color); margin: -4px 0 18px; }
+.transaction-tabs button { display: flex; align-items: center; gap: 8px; border: 0; border-bottom: 2px solid transparent; padding: 10px 4px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.transaction-tabs button.active { border-color: var(--accent); color: var(--text-primary); font-weight: 600; }
+.bill-link { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--accent); cursor: pointer; font-size: 12px; padding: 0; }
+.bill-actions { display: inline-flex; align-items: center; gap: 5px; }
+.bill-remove { color: var(--accent-danger); }
+.selected-file { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 13px; }
 
 /* ─── Hero / AI Brief ─── */
 .hero-card h2 { font-size: clamp(28px, 4vw, 48px); font-weight: 700; margin: 16px 0 8px; color: var(--text-primary); letter-spacing: -0.02em; }
@@ -807,6 +814,7 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 680px) {
   .page-header { display: grid; }
   .metric-grid, .metric-grid.six, .goal-planner-grid, .report-grid, .insight-grid, .form-grid, .goal-details, .brief-columns, .copilot-input { grid-template-columns: 1fr; }
+  .table-toolbar { grid-template-columns: 1fr; }
   .data-table article { grid-template-columns: 1fr; }
   .twin-visual { min-height: 600px; }
   .twin-node { width: 130px; }

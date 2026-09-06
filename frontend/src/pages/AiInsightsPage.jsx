@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, BrainCircuit, CheckCircle2, CircleDollarSign, Cpu, Database, LineChart, RotateCcw, Shield, Sparkles, TrendingUp, Zap } from "lucide-react";
+import { Activity, AlertTriangle, BrainCircuit, CheckCircle2, CircleDollarSign, Cpu, Database, LineChart, Plus, RotateCcw, Shield, Sparkles, Trash2, TrendingUp, Zap } from "lucide-react";
 import { useState } from "react";
 import { Badge, Button, Card, ConfirmModal, EmptyState, MetricCard, PageHeader, Progress, QuickLinks } from "../components/ui";
 import { useFinance } from "../context/FinanceContext";
@@ -11,9 +11,10 @@ const UNIVERSE_LABELS = {
 };
 
 export function AiInsights() {
-  const { aiStatus, aiForecast, aiAnomalies, acknowledgeAnomaly, resetAI } = useFinance();
+  const { aiStatus, aiForecast, aiAnomalies, acknowledgeAnomaly, excludeAnomaly, resetAI } = useFinance();
   const [showReset, setShowReset] = useState(false);
   const [acknowledging, setAcknowledging] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   async function handleAcknowledge(txnId) {
     setAcknowledging(txnId);
@@ -24,6 +25,11 @@ export function AiInsights() {
   async function handleReset() {
     await resetAI();
     setShowReset(false);
+  }
+
+  async function handleDelete() {
+    if (deletingId) await excludeAnomaly(deletingId);
+    setDeletingId(null);
   }
 
   const forecastReady = aiForecast && aiForecast.status !== "learning";
@@ -192,9 +198,10 @@ export function AiInsights() {
                     onClick={() => handleAcknowledge(txn.id)}
                     disabled={acknowledging === txn.id}
                   >
-                    <CheckCircle2 size={15} />
+                    <Plus size={15} />
                     {acknowledging === txn.id ? "Updating model..." : "Acknowledge — This is normal"}
                   </Button>
+                  <Button variant="ghost" onClick={() => setDeletingId(txn.id)}><Trash2 size={15} /> Exclude from model training</Button>
                 </div>
               );
             })}
@@ -206,6 +213,8 @@ export function AiInsights() {
           />
         )}
       </Card>
+
+      <ConfirmModal isOpen={Boolean(deletingId)} title="Exclude this transaction from training?" message="The transaction will remain in your ledger, but the anomaly model will ignore it from now on." confirmText="Exclude" onConfirm={handleDelete} onCancel={() => setDeletingId(null)} />
 
       {/* ── Model Transparency ───────────────────────────────────────── */}
       {aiStatus?.weight_info && (

@@ -46,6 +46,20 @@ export const api = {
   transactions: () => get("/transactions"),
   createTransaction: (transaction) => post("/transactions", transaction),
   deleteTransaction: (id) => request(`/transactions/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  restoreTransaction: (id) => post(`/transactions/${encodeURIComponent(id)}/restore`, {}),
+  uploadBill: async (id, file) => {
+    const form = new FormData();
+    form.append("bill", file);
+    const response = await fetch(apiUrl(`/transactions/${encodeURIComponent(id)}/bill`), { method: "POST", body: form, headers: authHeaders() });
+    if (!response.ok) throw new Error(await response.text() || "Could not upload bill");
+    return response.json();
+  },
+  downloadBill: async (id) => {
+    const response = await fetch(apiUrl(`/transactions/${encodeURIComponent(id)}/bill`), { headers: authHeaders() });
+    if (!response.ok) throw new Error("Could not open bill");
+    return response.blob();
+  },
+  deleteBill: (id) => request(`/transactions/${encodeURIComponent(id)}/bill`, { method: "DELETE" }),
   budget: () => get("/budget"),
   health: () => get("/health"),
   forecast: (period = 24) => get(`/forecast?period=${period}`),
@@ -69,6 +83,7 @@ export const api = {
     forecast: () => get("/ai/forecast"),
     anomalies: () => get("/ai/anomalies"),
     acknowledge: (txnId) => post(`/ai/anomalies/${encodeURIComponent(txnId)}/acknowledge`),
+    exclude: (txnId) => post(`/ai/anomalies/${encodeURIComponent(txnId)}/exclude`),
     weights: () => get("/ai/weights"),
     reset: () => request("/ai/reset", { method: "POST" }),
   },

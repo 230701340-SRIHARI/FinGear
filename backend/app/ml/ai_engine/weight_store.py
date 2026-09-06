@@ -1,17 +1,4 @@
-"""
-Weight Serialization & Persistence — JSON file-based per-user weight storage.
-
-Schema:
-{
-  "forecast_weights": [w0, w1, ..., w6, bias],           # 8 floats
-  "multiverse_weights": {
-    "FOOD":     [17 floats],
-    "SHOPPING": [17 floats],
-    "OTHERS":   [17 floats]
-  },
-  "last_sync": 1776154800000                              # epoch ms
-}
-"""
+"""PostgreSQL-first persistence for per-user AI model weights."""
 
 from __future__ import annotations
 
@@ -20,10 +7,13 @@ import os
 import time
 from pathlib import Path
 
-from app.ml.ai_engine.forecast_brain import ForecastWeights
-from app.ml.ai_engine.anomaly_detector import AutoencoderWeights, UNIVERSE_NAMES
+from sqlalchemy.exc import SQLAlchemyError
 
-# Weight files directory: relative to backend root
+from app.database.models import AIModelWeights
+from app.database.postgres import SessionLocal
+from app.ml.ai_engine.anomaly_detector import AutoencoderWeights
+from app.ml.ai_engine.forecast_brain import ForecastWeights
+
 WEIGHTS_DIR = Path(os.path.dirname(os.path.abspath(__file__))).parent.parent.parent / "ai_weights"
 
 
@@ -31,82 +21,139 @@ def _user_weight_path(user_id: str) -> Path:
     return WEIGHTS_DIR / f"{user_id}.json"
 
 
-def save_weights(
-    user_id: str,
-    forecast_weights: ForecastWeights,
-    multiverse_weights: dict[str, AutoencoderWeights],
-) -> None:
-    """Persist all AI weights for a user to disk."""
-    WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
+def _decode(forecast_values: list, category_values: dict) -> tuple[ForecastWeights, dict[str, AutoencoderWeights]]:
+    return (
+        ForecastWeights.from_list(forecast_values),
+        {name: AutoencoderWeights.from_list(values) for name, values in category_values.items()},
+    )
 
+
+def _load_database(user_id: str):
+    if not SessionLocal:
+        return None
+    session = SessionLocal()
+    try:
+        row = session.get(AIModelWeights, str(user_id))
+        if not row:
+            return None
+        return _decode(row.forecast_weights or [], row.category_weights or {})
+    except SQLAlchemyError:
+        session.rollback()
+        return None
+    finally:
+        session.close()
+
+
+def _save_database(user_id: str, forecast_weights: ForecastWeights, category_weights: dict[str, AutoencoderWeights]) -> bool:
+    if not SessionLocal:
+        return False
+    session = SessionLocal()
+    try:
+        row = session.get(AIModelWeights, str(user_id))
+        if row is None:
+            row = AIModelWeights(user_key=str(user_id))
+            session.add(row)
+        row.forecast_weights = forecast_weights.to_list()
+        row.category_weights = {name: weights.to_list() for name, weights in category_weights.items()}
+        session.commit()
+        return True
+    except SQLAlchemyError:
+        session.rollback()
+        return False
+    finally:
+        session.close()
+
+
+def save_weights(user_id: str, forecast_weights: ForecastWeights, category_weights: dict[str, AutoencoderWeights]) -> None:
+    """Persist weights to PostgreSQL; retain JSON fallback for offline development."""
+    if _save_database(user_id, forecast_weights, category_weights):
+        return
+
+    WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
     data = {
         "forecast_weights": forecast_weights.to_list(),
-        "multiverse_weights": {
-            name: multiverse_weights[name].to_list()
-            for name in UNIVERSE_NAMES
-            if name in multiverse_weights
-        },
+        "multiverse_weights": {name: weights.to_list() for name, weights in category_weights.items()},
         "last_sync": int(time.time() * 1000),
     }
-
-    path = _user_weight_path(user_id)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    with _user_weight_path(user_id).open("w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2)
 
 
 def load_weights(user_id: str) -> tuple[ForecastWeights, dict[str, AutoencoderWeights]] | None:
-    """Load persisted AI weights for a user. Returns None if no file exists."""
+    """Load PostgreSQL weights first, then migrate/read legacy JSON weights."""
+    database_weights = _load_database(user_id)
+    if database_weights:
+        return database_weights
+
     path = _user_weight_path(user_id)
     if not path.exists():
         return None
-
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, IOError):
+        with path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        decoded = _decode(data.get("forecast_weights", []), data.get("multiverse_weights", {}))
+        if SessionLocal:
+            _save_database(user_id, decoded[0], decoded[1])
+        return decoded
+    except (json.JSONDecodeError, OSError):
         return None
-
-    forecast = ForecastWeights.from_list(data.get("forecast_weights", []))
-    multiverse = {}
-    mw = data.get("multiverse_weights", {})
-    for name in UNIVERSE_NAMES:
-        if name in mw:
-            multiverse[name] = AutoencoderWeights.from_list(mw[name])
-        else:
-            multiverse[name] = AutoencoderWeights()
-
-    return forecast, multiverse
 
 
 def delete_weights(user_id: str) -> bool:
-    """Factory reset: delete weight file for a user."""
+    deleted = False
+    if SessionLocal:
+        session = SessionLocal()
+        try:
+            row = session.get(AIModelWeights, str(user_id))
+            if row:
+                session.delete(row)
+                session.commit()
+                deleted = True
+        except SQLAlchemyError:
+            session.rollback()
+        finally:
+            session.close()
+
     path = _user_weight_path(user_id)
     if path.exists():
         path.unlink()
-        return True
-    return False
+        deleted = True
+    return deleted
 
 
 def get_weight_info(user_id: str) -> dict:
-    """Get weight file metadata without full deserialization."""
+    if SessionLocal:
+        session = SessionLocal()
+        try:
+            row = session.get(AIModelWeights, str(user_id))
+            if row:
+                return {
+                    "storage": "postgresql",
+                    "exists": True,
+                    "forecast_param_count": len(row.forecast_weights or []),
+                    "multiverse_categories": list((row.category_weights or {}).keys()),
+                    "total_params": len(row.forecast_weights or []) + sum(len(values) for values in (row.category_weights or {}).values()),
+                    "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                }
+        except SQLAlchemyError:
+            session.rollback()
+        finally:
+            session.close()
+
     path = _user_weight_path(user_id)
     if not path.exists():
-        return {"exists": False, "path": str(path)}
-
+        return {"storage": "fallback-file", "exists": False}
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        with path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
         return {
+            "storage": "fallback-file",
             "exists": True,
-            "path": str(path),
             "last_sync": data.get("last_sync"),
             "forecast_param_count": len(data.get("forecast_weights", [])),
             "multiverse_categories": list(data.get("multiverse_weights", {}).keys()),
-            "total_params": (
-                len(data.get("forecast_weights", []))
-                + sum(len(v) for v in data.get("multiverse_weights", {}).values())
-            ),
+            "total_params": len(data.get("forecast_weights", [])) + sum(len(values) for values in data.get("multiverse_weights", {}).values()),
             "file_size_bytes": path.stat().st_size,
         }
-    except (json.JSONDecodeError, IOError):
-        return {"exists": True, "path": str(path), "error": "Corrupt weight file"}
+    except (json.JSONDecodeError, OSError):
+        return {"storage": "fallback-file", "exists": True, "error": "Corrupt weight file"}

@@ -42,28 +42,38 @@ PHASE0_MIN_TRANSACTIONS = 4
 MEDIAN_MULTIPLIER = 3.0
 
 CATEGORY_UNIVERSE_MAP = {
-    "Food": "FOOD",
-    "Shopping": "SHOPPING",
-    "Entertainment": "SHOPPING",
-    "Lifestyle": "SHOPPING",
-    "Housing": "OTHERS",
-    "Transport": "OTHERS",
-    "Utilities": "OTHERS",
-    "Healthcare": "OTHERS",
-    "Education": "OTHERS",
-    "Debt": "OTHERS",
-    "Other": "OTHERS",
-    "Investment": "OTHERS",
-    "Income": "OTHERS",
-    "Scenario change": "OTHERS",
-    "Extra investment": "OTHERS",
+    "food": "FOOD",
+    "shopping": "SHOPPING",
+    "entertainment": "ENTERTAINMENT",
+    "lifestyle": "LIFESTYLE",
+    "housing": "HOUSING",
+    "housing / rent": "HOUSING",
+    "rent": "HOUSING",
+    "transport": "TRANSPORT",
+    "utilities": "UTILITIES",
+    "bills": "BILLS",
+    "healthcare": "HEALTHCARE",
+    "education": "EDUCATION",
+    "debt": "DEBT",
+    "investment": "INVESTMENT",
+    "personal care": "PERSONAL_CARE",
+    "subscriptions": "SUBSCRIPTIONS",
+    "travel": "TRAVEL",
+    "other expense": "OTHER_EXPENSE",
+    "other": "OTHERS",
+    "scenario change": "SCENARIO_CHANGE",
+    "extra investment": "EXTRA_INVESTMENT",
 }
 
-UNIVERSE_NAMES = ["FOOD", "SHOPPING", "OTHERS"]
+UNIVERSE_NAMES = ["FOOD", "SHOPPING", "ENTERTAINMENT", "LIFESTYLE", "HOUSING", "TRANSPORT", "UTILITIES", "BILLS", "HEALTHCARE", "EDUCATION", "DEBT", "INVESTMENT", "PERSONAL_CARE", "SUBSCRIPTIONS", "TRAVEL", "OTHER_EXPENSE", "OTHERS"]
 
 
 def get_universe(category: str) -> str:
-    return CATEGORY_UNIVERSE_MAP.get(category, "OTHERS")
+    normalized = " ".join(str(category or "Other").strip().lower().split())
+    if normalized in CATEGORY_UNIVERSE_MAP:
+        return CATEGORY_UNIVERSE_MAP[normalized]
+    slug = "_".join(part for part in normalized.replace("/", " ").split() if part.isalnum())
+    return f"CATEGORY_{slug.upper() or 'OTHER'}"
 
 
 # ─── Feature Extraction ─────────────────────────────────────────────────────
@@ -312,18 +322,23 @@ class AnomalyEnsembleManager:
             name: CategoryBrain(universe=name) for name in UNIVERSE_NAMES
         }
 
+    def _get_brain(self, universe: str) -> CategoryBrain:
+        if universe not in self.brains:
+            self.brains[universe] = CategoryBrain(universe=universe)
+        return self.brains[universe]
+
     def train_all(self, transactions: list[dict]):
         """Full (re)training from a list of transactions."""
         # Group transactions by universe
-        grouped: dict[str, list[dict]] = {name: [] for name in UNIVERSE_NAMES}
+        grouped: dict[str, list[dict]] = {name: [] for name in self.brains}
         for txn in transactions:
-            if txn.get("type") != "expense":
+            if txn.get("type") != "expense" or txn.get("model_training_excluded") or txn.get("deleted_at"):
                 continue
             universe = get_universe(txn.get("category", "Other"))
-            grouped[universe].append(txn)
+            grouped.setdefault(universe, []).append(txn)
 
         for universe, txns in grouped.items():
-            brain = self.brains[universe]
+            brain = self._get_brain(universe)
             brain.transaction_count = len(txns)
 
             if not txns:
@@ -362,7 +377,7 @@ class AnomalyEnsembleManager:
             )
 
         universe = get_universe(transaction.get("category", "Other"))
-        brain = self.brains[universe]
+        brain = self._get_brain(universe)
 
         if brain.transaction_count < PHASE0_MIN_TRANSACTIONS:
             return AnomalyResult(
@@ -378,7 +393,7 @@ class AnomalyEnsembleManager:
             is_anomaly = amount > MEDIAN_MULTIPLIER * brain.median_amount
             score = min(amount / max(brain.median_amount * MEDIAN_MULTIPLIER, 1.0), 1.0) if is_anomaly else 0.0
             return AnomalyResult(
-                is_anomaly=is_anomaly and not transaction.get("acknowledged", False),
+                is_anomaly=is_anomaly and not transaction.get("acknowledged", False) and not transaction.get("model_training_excluded", False),
                 score=round(score, 4),
                 phase=0,
                 kmeans_score=0.0,
@@ -394,7 +409,7 @@ class AnomalyEnsembleManager:
         is_anomaly = score_final > ANOMALY_THRESHOLD
 
         return AnomalyResult(
-            is_anomaly=is_anomaly and not transaction.get("acknowledged", False),
+            is_anomaly=is_anomaly and not transaction.get("acknowledged", False) and not transaction.get("model_training_excluded", False),
             score=round(score_final, 4),
             phase=1,
             kmeans_score=round(s_kmeans, 4),
@@ -404,8 +419,10 @@ class AnomalyEnsembleManager:
 
     def train_on_feedback(self, transaction: dict):
         """Human-in-the-loop: retrain autoencoder on an acknowledged transaction."""
+        if transaction.get("model_training_excluded"):
+            return
         universe = get_universe(transaction.get("category", "Other"))
-        brain = self.brains[universe]
+        brain = self._get_brain(universe)
         x = extract_features(transaction)
         brain.autoencoder.train_step(x)
 
@@ -426,10 +443,13 @@ class AnomalyEnsembleManager:
         return status
 
     def get_autoencoder_weights(self, universe: str) -> AutoencoderWeights:
-        return self.brains[universe].autoencoder.weights
+        return self._get_brain(universe).autoencoder.weights
 
     def set_autoencoder_weights(self, universe: str, weights: AutoencoderWeights):
-        self.brains[universe].autoencoder.weights = weights
+        self._get_brain(universe).autoencoder.weights = weights
+
+    def universe_names(self) -> list[str]:
+        return sorted(self.brains)
 
     def reset(self):
         """Factory reset: reinitialize all brains."""

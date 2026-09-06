@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import date
+from datetime import date, datetime, timedelta
 import secrets
 from uuid import uuid4
 
@@ -70,6 +70,7 @@ def _seed_state() -> dict:
             {"id": "txn-5", "date": "2026-08-12", "description": "Loan EMI", "category": "Debt", "type": "expense", "amount": 5_000},
             {"id": "txn-6", "date": "2026-08-16", "description": "Utilities", "category": "Utilities", "type": "expense", "amount": 3_500},
         ],
+        "deleted_transactions": [],
         "budgets": [
             {"category": "Rent", "planned": 18_000, "actual": 18_000},
             {"category": "Food", "planned": 7_000, "actual": 9_000},
@@ -165,18 +166,39 @@ def get_state(user_id: str) -> dict:
 
 
 def state_copy(user_id: str) -> dict:
-    return deepcopy(get_state(user_id))
+    state = deepcopy(get_state(user_id))
+    profile = state["profile"]
+    month = date.today().strftime("%Y-%m")
+    history = profile.get("monthly_income_history", {})
+    profile["monthly_income"] = float(history.get(month, history.get("default", profile.get("monthly_income", 0))))
+    return state
 
 
 def update_profile(user_id: str, profile: dict) -> dict:
+    current = get_state(user_id)["profile"]
+    history = current.get("monthly_income_history", {}).copy()
+    month = date.today().strftime("%Y-%m")
+    current_effective_income = float(history.get(month, history.get("default", current.get("monthly_income", 0))))
+    requested_income = float(profile.get("monthly_income", current_effective_income))
+    if requested_income != current_effective_income:
+        history = {"default": requested_income}
+    profile["monthly_income_history"] = history
     get_state(user_id)["profile"] = profile
-    return deepcopy(profile)
+    return deepcopy(state_copy(user_id)["profile"])
 
 
 def add_transaction(user_id: str, transaction: dict) -> dict:
     transaction = {**transaction, "id": transaction.get("id") or str(uuid4())}
     get_state(user_id)["transactions"].insert(0, transaction)
     return deepcopy(transaction)
+
+
+def _purge_old_deleted(state: dict) -> None:
+    cutoff = datetime.utcnow() - timedelta(days=60)
+    state["deleted_transactions"] = [
+        item for item in state.get("deleted_transactions", [])
+        if datetime.fromisoformat(item["deleted_at"]) >= cutoff
+    ]
 
 
 def add_goal(user_id: str, goal: dict) -> dict:
@@ -191,7 +213,55 @@ def delete_goal(user_id: str, goal_name: str) -> None:
 
 def delete_transaction(user_id: str, transaction_id: str) -> None:
     txns = get_state(user_id)["transactions"]
-    get_state(user_id)["transactions"] = [t for t in txns if str(t.get("id")) != str(transaction_id)]
+    state = get_state(user_id)
+    _purge_old_deleted(state)
+    remaining = []
+    for transaction in txns:
+        if str(transaction.get("id")) == str(transaction_id):
+            deleted = deepcopy(transaction)
+            deleted["deleted_at"] = datetime.utcnow().isoformat()
+            state["deleted_transactions"].insert(0, deleted)
+        else:
+            remaining.append(transaction)
+    state["transactions"] = remaining
+
+
+def deleted_transactions(user_id: str) -> list[dict]:
+    state = get_state(user_id)
+    _purge_old_deleted(state)
+    return deepcopy(state["deleted_transactions"])
+
+
+def restore_transaction(user_id: str, transaction_id: str) -> dict | None:
+    state = get_state(user_id)
+    _purge_old_deleted(state)
+    for index, transaction in enumerate(state["deleted_transactions"]):
+        if str(transaction.get("id")) == str(transaction_id):
+            restored = deepcopy(transaction)
+            restored.pop("deleted_at", None)
+            state["transactions"].insert(0, restored)
+            state["deleted_transactions"].pop(index)
+            return restored
+    return None
+
+
+def update_income_from_transaction(user_id: str, transaction: dict) -> None:
+    if transaction.get("type") != "income" or not transaction.get("add_to_monthly_income"):
+        return
+    profile = get_state(user_id)["profile"]
+    amount = float(transaction["amount"])
+    profile.setdefault("monthly_income_history", {})
+    history = profile["monthly_income_history"]
+    baseline = float(history.get("default", profile.get("monthly_income", 0)))
+    history.setdefault("default", baseline)
+    if transaction.get("monthly_income_scope") == "all_months":
+        history = {"default": baseline + amount}
+        profile["monthly_income_history"] = history
+        profile["monthly_income"] = baseline + amount
+    else:
+        month = date.today().strftime("%Y-%m")
+        current_month_income = float(history.get(month, baseline))
+        history[month] = current_month_income + amount
 
 
 def delete_simulation(user_id: str, sim_id: str) -> None:
@@ -223,6 +293,20 @@ def acknowledge_transaction(user_id: str, transaction_id: str) -> None:
     for txn in txns:
         if str(txn.get("id")) == str(transaction_id):
             txn["acknowledged"] = True
+            txn["anomaly_acknowledged"] = True
+            txn.pop("model_training_excluded", None)
+            txn.pop("anomaly_flag", None)
+            txn.pop("anomaly_score", None)
+            break
+
+
+def exclude_transaction_from_model(user_id: str, transaction_id: str) -> None:
+    """Keep a transaction in the ledger but permanently exclude it from model training."""
+    txns = get_state(user_id)["transactions"]
+    for txn in txns:
+        if str(txn.get("id")) == str(transaction_id):
+            txn["model_training_excluded"] = True
+            txn["anomaly_acknowledged"] = False
             txn.pop("anomaly_flag", None)
             txn.pop("anomaly_score", None)
             break

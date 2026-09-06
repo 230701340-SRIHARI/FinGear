@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends
 
 from app.core.security import get_current_user_id
 from app.ml.ai_engine import ai_engine
+from app.ml.ai_engine import feedback_store
 from app.repositories import memory
 
 router = APIRouter(prefix="/ai", tags=["ai-engine"])
@@ -24,6 +25,10 @@ def ai_status(user_id: str = Depends(get_current_user_id)) -> dict:
     """Overall AI engine status: data maturity, forecast readiness, anomaly phases."""
     state = memory.state_copy(user_id)
     transactions = state["transactions"]
+    excluded_ids = feedback_store.excluded_transaction_ids(user_id)
+    for transaction in transactions:
+        if str(transaction.get("id")) in excluded_ids:
+            transaction["model_training_excluded"] = True
     return ai_engine.get_status(user_id, transactions)
 
 
@@ -48,6 +53,10 @@ def ai_forecast(user_id: str = Depends(get_current_user_id)) -> dict:
 def ai_anomalies(user_id: str = Depends(get_current_user_id)) -> dict:
     """List of flagged anomalous transactions with ensemble scores."""
     transactions = memory.state_copy(user_id)["transactions"]
+    excluded_ids = feedback_store.excluded_transaction_ids(user_id)
+    for transaction in transactions:
+        if str(transaction.get("id")) in excluded_ids:
+            transaction["model_training_excluded"] = True
     anomalies = ai_engine.get_anomalies(user_id, transactions)
     return {"anomalies": anomalies, "count": len(anomalies)}
 
@@ -68,7 +77,16 @@ def ai_acknowledge(txn_id: str, user_id: str = Depends(get_current_user_id)) -> 
     if not txn:
         return {"acknowledged": False, "message": "Transaction not found."}
 
+    feedback_store.record(user_id, txn_id, "confirmed_normal")
     return ai_engine.acknowledge_anomaly(user_id, txn)
+
+
+@router.post("/anomalies/{txn_id}/exclude")
+def ai_exclude(txn_id: str, user_id: str = Depends(get_current_user_id)) -> dict:
+    """Keep a transaction visible while excluding it from future model training."""
+    memory.exclude_transaction_from_model(user_id, txn_id)
+    feedback_store.record(user_id, txn_id, "excluded")
+    return {"excluded": True, "transaction_id": txn_id}
 
 
 @router.get("/weights")
@@ -86,5 +104,8 @@ def ai_reset(user_id: str = Depends(get_current_user_id)) -> dict:
         txn.pop("acknowledged", None)
         txn.pop("anomaly_score", None)
         txn.pop("anomaly_flag", None)
+        txn.pop("model_training_excluded", None)
+
+    feedback_store.clear(user_id)
 
     return ai_engine.factory_reset(user_id)

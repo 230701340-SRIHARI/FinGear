@@ -1,4 +1,4 @@
-import { Activity, Calendar, CircleDollarSign, CreditCard, Goal as GoalIcon, Landmark, LineChart, MoreVertical, Pencil, Plus, ShieldAlert, SlidersHorizontal, Trash2, TrendingDown, TrendingUp, WalletCards } from "lucide-react";
+import { Activity, Calendar, CircleDollarSign, CreditCard, FileUp, Goal as GoalIcon, Landmark, LineChart, MoreVertical, Pencil, Plus, RotateCcw, ShieldAlert, SlidersHorizontal, Trash2, TrendingDown, TrendingUp, WalletCards, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AllocationChart, NetWorthChart } from "../components/charts";
 import { Badge, Button, Card, ConfirmModal, EmptyState, Field, MetricCard, PageHeader, Progress, QuickLinks } from "../components/ui";
@@ -12,17 +12,53 @@ function defaultTargetDate() {
 }
 
 export function Transactions() {
-  const { transactions, addTransaction, deleteTransaction, acknowledgeAnomaly } = useFinance();
+  const { transactions, addTransaction, deleteTransaction, restoreTransaction, uploadBill, downloadBill, deleteBill, acknowledgeAnomaly } = useFinance();
   const [showForm, setShowForm] = useState(false);
   const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [view, setView] = useState("active");
   const [deletingId, setDeletingId] = useState(null);
-  const [form, setForm] = useState({ amount: 1000, type: "expense", category: "Food", date: "2026-08-20", description: "" });
-  const rows = transactions.transactions.filter((txn) => `${txn.description} ${txn.category}`.toLowerCase().includes(query.toLowerCase()));
+  const [incomePrompt, setIncomePrompt] = useState(false);
+  const [pendingForm, setPendingForm] = useState(null);
+  const [uploadingId, setUploadingId] = useState(null);
+  const [billToDelete, setBillToDelete] = useState(null);
+  const [billFile, setBillFile] = useState(null);
+  const [form, setForm] = useState({ amount: 1000, type: "expense", category: "Food", date: new Date().toISOString().slice(0, 10), description: "" });
+  const activeRows = transactions.transactions.filter((txn) => `${txn.description} ${txn.category}`.toLowerCase().includes(query.toLowerCase()) && (typeFilter === "all" || txn.type === typeFilter));
+  const rows = view === "active" ? activeRows : (transactions.recently_deleted || []).filter((txn) => `${txn.description} ${txn.category}`.toLowerCase().includes(query.toLowerCase()));
+  const expenseCategories = ["Food", "Housing / Rent", "Transport", "Utilities", "Bills", "Shopping", "Entertainment", "Healthcare", "Education", "Investment", "Debt", "Personal care", "Subscriptions", "Travel", "Other expense"];
+  const incomeCategories = ["Salary", "Freelance", "Business income", "Bonus", "Interest", "Dividends", "Rental income", "Gift received", "Refund", "Other income"];
+  const categories = form.type === "income" ? incomeCategories : expenseCategories;
+
+  async function saveTransaction(payload) {
+    const created = await addTransaction(payload);
+    if (billFile) await uploadBill(created.id, billFile);
+    setBillFile(null);
+    setShowForm(false);
+  }
 
   async function submit(event) {
     event.preventDefault();
-    await addTransaction(form);
+    if (form.type === "income") {
+      setPendingForm(form);
+      setIncomePrompt(true);
+      return;
+    }
+    await saveTransaction(form);
+  }
+
+  async function saveIncome(scope) {
+    await saveTransaction({ ...pendingForm, ...(scope ? { add_to_monthly_income: true, monthly_income_scope: scope } : {}) });
+    setIncomePrompt(false);
+    setPendingForm(null);
     setShowForm(false);
+  }
+
+  async function handleBillUpload(transactionId, event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploadingId(transactionId);
+    try { await uploadBill(transactionId, file); } finally { setUploadingId(null); event.target.value = ""; }
   }
 
   async function handleDeleteConfirm() {
@@ -34,14 +70,18 @@ export function Transactions() {
 
   return (
     <>
-      <PageHeader eyebrow="Transactions" title="Financial transaction management" subtitle="Search, filter and review income and expense flows." actions={<Button onClick={() => setShowForm(true)}><Plus size={17} /> Add Transaction</Button>} />
+      <PageHeader eyebrow="Money movement" title="Transaction manager" subtitle="Capture every inflow and outflow once. Your dashboard, budget, forecast and AI learn from this ledger." actions={<Button onClick={() => setShowForm(true)}><Plus size={17} /> Add transaction</Button>} />
       <section className="metric-grid">
         <MetricCard icon={<Landmark />} label="Income" value={currency(transactions.summary.income)} detail="This month" tone="success" />
         <MetricCard icon={<CreditCard />} label="Expenses" value={currency(transactions.summary.expenses)} detail="This month" tone="warning" />
         <MetricCard icon={<Activity />} label="Net" value={currency(transactions.summary.net)} detail="Income minus expenses" tone="info" />
       </section>
       <Card>
-        <div className="table-toolbar"><input placeholder="Search transactions..." value={query} onChange={(event) => setQuery(event.target.value)} /><Badge tone="info">{rows.length} records</Badge></div>
+        <div className="transaction-tabs">
+          <button className={view === "active" ? "active" : ""} onClick={() => setView("active")}>Active ledger <Badge tone="info">{transactions.transactions.length}</Badge></button>
+          <button className={view === "deleted" ? "active" : ""} onClick={() => setView("deleted")}>Recently deleted <Badge tone="warning">{(transactions.recently_deleted || []).length}</Badge></button>
+        </div>
+        <div className="table-toolbar"><input placeholder="Search description or category..." value={query} onChange={(event) => setQuery(event.target.value)} /><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} disabled={view === "deleted"}><option value="all">All types</option><option value="income">Income</option><option value="expense">Expenses</option></select><Badge tone="info">{rows.length} records</Badge></div>
         {rows.length ? (
           <div className="data-table">
             {rows.map((txn) => (
@@ -51,10 +91,11 @@ export function Transactions() {
                 <span>{txn.category}</span>
                 <Badge tone={txn.type === "income" ? "success" : "warning"}>{txn.type}</Badge>
                 <b>{currency(txn.amount)}</b>
+                {txn.bill_name && <span className="bill-actions"><button className="bill-link" onClick={() => downloadBill(txn.id)} title="Open attached bill"><FileUp size={13} /> PDF attached</button><button className="icon-button bill-remove" onClick={() => setBillToDelete(txn.id)} title="Remove attached bill" aria-label="Remove attached bill"><X size={14} /></button></span>}
                 {txn.anomaly_flag && (
                   <Badge tone="danger" title={`Anomaly score: ${((txn.anomaly_score || 0) * 100).toFixed(1)}%`}>⚠ Anomaly</Badge>
                 )}
-                {txn.anomaly_flag && !txn.acknowledged && (
+                {view === "active" && txn.anomaly_flag && !txn.acknowledged && (
                   <button
                     className="icon-button"
                     style={{ color: "var(--accent-success)", fontSize: "12px" }}
@@ -64,14 +105,18 @@ export function Transactions() {
                     ✓ OK
                   </button>
                 )}
-                <button
+                {view === "active" && <label className="icon-button" title="Attach a PDF bill">
+                  <FileUp size={16} />
+                  <input type="file" accept="application/pdf" hidden onChange={(event) => handleBillUpload(txn.id, event)} />
+                </label>}
+                {view === "deleted" ? <button className="icon-button" title="Restore transaction" onClick={() => restoreTransaction(txn.id)}><RotateCcw size={16} /></button> : <button
                   className="icon-button"
                   style={{ color: "var(--accent-danger)" }}
                   title="Delete Transaction"
                   onClick={() => setDeletingId(txn.id)}
                 >
                   <Trash2 size={16} />
-                </button>
+                </button>}
               </article>
             ))}
           </div>
@@ -84,14 +129,18 @@ export function Transactions() {
         <Card className="modal-card">
           <form className="form-grid" onSubmit={submit}>
             <Field label="Amount"><input type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: Number(e.target.value) })} /></Field>
-            <Field label="Type"><select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}><option>expense</option><option>income</option></select></Field>
-            <Field label="Category"><select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>{["Housing","Food","Transport","Utilities","Shopping","Healthcare","Education","Entertainment","Investment","Debt","Other"].map((item) => <option key={item}>{item}</option>)}</select></Field>
+            <Field label="Type"><select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value, category: e.target.value === "income" ? incomeCategories[0] : expenseCategories[0] })}><option>expense</option><option>income</option></select></Field>
+            <Field label="Category"><select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>{categories.map((item) => <option key={item}>{item}</option>)}</select></Field>
             <Field label="Date"><input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
             <Field label="Description"><input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required /></Field>
+            <Field label="Bill PDF (optional)"><input type="file" accept="application/pdf" onChange={(e) => setBillFile(e.target.files?.[0] || null)} /></Field>
+            {billFile && <div className="selected-file">{billFile.name}<button type="button" className="icon-button" onClick={() => setBillFile(null)} aria-label="Remove selected bill"><X size={14} /></button></div>}
             <div className="form-actions"><Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button><Button type="submit">Save</Button></div>
           </form>
         </Card>
       )}
+
+      {incomePrompt && <div className="modal-backdrop" onClick={() => { setIncomePrompt(false); setPendingForm(null); }}><Card className="modal-card confirm-modal" onClick={(event) => event.stopPropagation()}><h3>Add this income to your financial model?</h3><p className="muted">The {currency(pendingForm?.amount || 0)} will be added to your existing income. Choose how long the increase should apply.</p><div className="form-actions"><Button variant="ghost" onClick={() => saveIncome(null)}>Transaction only</Button><Button variant="secondary" onClick={() => saveIncome("present_month")}>Add this month</Button><Button onClick={() => saveIncome("all_months")}>Add every month</Button></div></Card></div>}
 
       <ConfirmModal
         isOpen={Boolean(deletingId)}
@@ -99,6 +148,14 @@ export function Transactions() {
         message="Are you sure you want to delete this transaction record?"
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeletingId(null)}
+      />
+      <ConfirmModal
+        isOpen={Boolean(billToDelete)}
+        title="Remove attached bill?"
+        message="The transaction will stay in your ledger, but its PDF bill will be permanently removed."
+        confirmText="Remove bill"
+        onConfirm={async () => { await deleteBill(billToDelete); setBillToDelete(null); }}
+        onCancel={() => setBillToDelete(null)}
       />
     </>
   );

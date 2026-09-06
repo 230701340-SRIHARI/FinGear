@@ -45,6 +45,7 @@ class FinancialProfile(BaseModel):
     fixed_deposits: float = Field(default=0, ge=0)
     gold: float = Field(default=0, ge=0)
     goals: list[Goal] = Field(default_factory=list)
+    monthly_income_history: dict[str, float] = Field(default_factory=dict)
 
 
 class Scenario(BaseModel):
@@ -91,6 +92,10 @@ class Transaction(BaseModel):
     category: str
     type: str = Field(pattern="^(income|expense)$")
     amount: float = Field(gt=0)
+    add_to_monthly_income: bool = False
+    monthly_income_scope: str | None = Field(default=None, pattern="^(present_month|all_months)$")
+    bill_name: str | None = None
+    bill_url: str | None = None
 
 
 class BudgetItem(BaseModel):

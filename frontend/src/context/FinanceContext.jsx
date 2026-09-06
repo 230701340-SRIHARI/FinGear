@@ -8,7 +8,7 @@ const FinanceContext = createContext(null);
 const initialData = {
   profile: demoProfile,
   dashboard: null,
-  transactions: { transactions: [], summary: { income: 0, expenses: 0, net: 0, by_category: [] } },
+  transactions: { transactions: [], recently_deleted: [], summary: { income: 0, expenses: 0, net: 0, by_category: [] } },
   budget: { items: [], coach: {}, income: 0, planned: 0, actual: 0, remaining: 0 },
   health: null,
   forecast: { months: [], mode: "Baseline projection", assumptions: {}, metrics: {} },
@@ -129,8 +129,9 @@ export function FinanceProvider({ children }) {
   }
 
   async function addTransaction(transaction) {
-    await api.createTransaction(transaction);
+    const created = await api.createTransaction(transaction);
     await refresh();
+    return created;
   }
 
   async function deleteTransaction(id) {
@@ -140,6 +141,38 @@ export function FinanceProvider({ children }) {
       await refresh();
     } catch (err) {
       setError(err.message || "Could not delete this transaction.");
+    }
+  }
+
+  async function restoreTransaction(id) {
+    setError("");
+    try {
+      await api.restoreTransaction(id);
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not restore this transaction.");
+    }
+  }
+
+  async function uploadBill(id, file) {
+    await api.uploadBill(id, file);
+    await refresh();
+  }
+
+  async function downloadBill(id) {
+    const blob = await api.downloadBill(id);
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+
+  async function deleteBill(id) {
+    setError("");
+    try {
+      await api.deleteBill(id);
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not remove this bill.");
     }
   }
 
@@ -212,6 +245,16 @@ export function FinanceProvider({ children }) {
     }
   }
 
+  async function excludeAnomaly(txnId) {
+    setError("");
+    try {
+      await api.ai.exclude(txnId);
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not exclude this transaction from the model.");
+    }
+  }
+
   async function resetAI() {
     setError("");
     try {
@@ -227,7 +270,7 @@ export function FinanceProvider({ children }) {
   }, [token]);
 
   const value = useMemo(
-    () => ({ ...data, loading, error, refresh, saveProfile, addTransaction, deleteTransaction, deleteSimulation, addGoal, deleteGoal, fetchForecast, runSimulation, askCopilot, acknowledgeAnomaly, resetAI }),
+    () => ({ ...data, loading, error, refresh, saveProfile, addTransaction, deleteTransaction, restoreTransaction, uploadBill, downloadBill, deleteBill, deleteSimulation, addGoal, deleteGoal, fetchForecast, runSimulation, askCopilot, acknowledgeAnomaly, excludeAnomaly, resetAI }),
     [data, loading, error]
   );
 

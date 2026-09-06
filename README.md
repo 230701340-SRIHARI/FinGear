@@ -144,15 +144,15 @@ Google login uses the localhost backend callback in development and redirects ba
 
 ## PostgreSQL
 
-The intended persistent schema is in:
+PostgreSQL 16 is the persistent database target. The complete idempotent schema is in:
 
 ```text
 backend/app/database/schema.sql
 ```
 
-Tables include users, financial profiles, transactions, budgets, goals, investments, debts, health scores, forecasts, simulations, copilot conversations, notifications and financial events. Each financial entity belongs to a user.
+The schema creates a version registry, users, financial profiles, the transaction ledger, soft-deletion recovery, income adjustments, transaction bill metadata, anomaly feedback, budgets, goals, investments, debts, health scores, forecasts, simulations, Copilot conversations, notifications and financial events. Money uses PostgreSQL `NUMERIC` values rather than floating-point columns. Foreign keys and user-scoped indexes are included.
 
-PostgreSQL models and SQLAlchemy have been integrated. The application gracefully falls back to in-memory state for UI demonstrations if the database is unreachable or `DATABASE_URL` is unset, to ensure the demo always runs smoothly.
+SQLAlchemy models are defined in `backend/app/database/models.py`. Docker waits for a healthy PostgreSQL service and runs `backend/scripts/init_database.py` with retry handling before starting FastAPI. The current feature APIs still use the in-memory repository for the existing demonstration flow; connecting those repository operations to `SessionLocal` is a separate data-migration step. PostgreSQL schema initialization itself is ready.
 
 ## Docker
 
@@ -172,7 +172,7 @@ The Copilot reads current profile, health score, goals and forecast context befo
 
 Forecasting is now powered by trained Machine Learning models (Random Forest). The `ForecastEngine` dynamically blends machine learning output with baseline projections. The Health Score Engine uses a dual system combining a rule-based explainability layer with an ML prediction overlay.
 
-The models have been trained on synthetic financial data to demonstrate architecture readiness. 
+The models have been trained on synthetic financial data to demonstrate architecture readiness.
 
 To retrain the models:
 
