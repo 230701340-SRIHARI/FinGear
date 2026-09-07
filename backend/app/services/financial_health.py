@@ -360,6 +360,14 @@ def compute_financial_health_score(
     WT = tier.wants_pct / 100.0
     ST = tier.savings_pct / 100.0
 
+    lifestyle = (getattr(profile, "lifestyle_preference", None) or "Balanced").strip()
+    if lifestyle == "Frugal":
+        WT = max(0.10, round(WT - 0.06, 2))
+        ST = round(1.0 - NT - WT, 2)
+    elif lifestyle == "Experience-focused":
+        WT = min(0.45, round(WT + 0.06, 2))
+        ST = max(0.10, round(1.0 - NT - WT, 2))
+
     N = NE / I
     W = WA / I
     S = SV / I
@@ -645,9 +653,14 @@ def compute_financial_health_score(
         recommendations.append("Your financial structure is well balanced with your income tier. Maintain automatic SIPs and quarterly rebalancing.")
 
     # Stepping ratio representation
-    adaptive_wants_pct = round(max(WT * 100.0, (W * 100.0) - ((monthly_wants_reduction / I) * 100.0)), 1)
-    adaptive_needs_pct = round(min(75.0, max(NT * 100.0, N * 100.0)), 1)
-    adaptive_savings_pct = round(max(10.0, 100.0 - adaptive_needs_pct - adaptive_wants_pct), 1)
+    # Recommended slab targets stay fixed to benchmark (NT, WT, ST) while spending may fluctuate
+    adaptive_needs_pct = round(NT * 100.0, 1)
+    if monthly_wants_reduction > 0:
+        adaptive_wants_pct = round(max(WT * 100.0, (W * 100.0) - ((monthly_wants_reduction / I) * 100.0)), 1)
+        adaptive_savings_pct = round(max(10.0, 100.0 - adaptive_needs_pct - adaptive_wants_pct), 1)
+    else:
+        adaptive_wants_pct = round(WT * 100.0, 1)
+        adaptive_savings_pct = round(ST * 100.0, 1)
 
     return {
         "score": final_score_rounded,
@@ -740,9 +753,9 @@ def compute_financial_health_score(
             "tier": tier.tier,
             "name": tier.name,
             "range": tier.income_range,
-            "needs_pct": tier.needs_pct,
-            "wants_pct": tier.wants_pct,
-            "savings_pct": tier.savings_pct,
+            "needs_pct": round(NT * 100.0, 1),
+            "wants_pct": round(WT * 100.0, 1),
+            "savings_pct": round(ST * 100.0, 1),
             "needs_amount": round(I * NT, 2),
             "wants_amount": round(I * WT, 2),
             "savings_amount": round(I * ST, 2),
@@ -754,9 +767,9 @@ def compute_financial_health_score(
             "tier": tier.tier,
             "tier_name": tier.name,
             "income": round(I, 2),
-            "ideal_needs_pct": tier.needs_pct,
-            "ideal_wants_pct": tier.wants_pct,
-            "ideal_savings_pct": tier.savings_pct,
+            "ideal_needs_pct": round(NT * 100.0, 1),
+            "ideal_wants_pct": round(WT * 100.0, 1),
+            "ideal_savings_pct": round(ST * 100.0, 1),
             "actual_needs_pct": round(N * 100, 1),
             "actual_wants_pct": round(W * 100, 1),
             "actual_savings_pct": round(S * 100, 1),
@@ -766,6 +779,9 @@ def compute_financial_health_score(
             "needs_amount": round(NE, 2),
             "wants_amount": round(WA, 2),
             "savings_amount": round(SV, 2),
+            "recommended_needs_amount": round(I * NT, 2),
+            "recommended_wants_amount": round(I * WT, 2),
+            "recommended_savings_amount": round(I * ST, 2),
             "emergency_target": round(emergency_target, 2),
             "is_adapted": monthly_wants_reduction > 0,
             "adaptation_message": recommendations[0] if recommendations else tier.focus,

@@ -16,6 +16,7 @@ from app.database.models import (
     RecurringTransaction,
     Goal,
     Budget,
+    Debt,
     Simulation,
     CopilotConversation,
     Notification,
@@ -154,9 +155,16 @@ def _load_user_state_from_db(user_id: str, db=None) -> dict | None:
             db.commit()
             db.refresh(db_prof)
 
+        prof_name = db_prof.name
+        if not prof_name or (prof_name == "Arjun Verma" and db_user.name != "Arjun Verma"):
+            prof_name = db_user.name
+        prof_email = db_prof.email
+        if not prof_email or (prof_email == "arjun.verma@example.com" and db_user.email != "arjun.verma@example.com"):
+            prof_email = db_user.email
+
         profile_dict = {
-            "name": db_prof.name or db_user.name,
-            "email": db_prof.email or db_user.email,
+            "name": prof_name,
+            "email": prof_email,
             "age": db_prof.age or 25,
             "occupation": db_prof.occupation or "",
             "currency": db_prof.currency or "INR",
@@ -345,6 +353,50 @@ def _load_user_state_from_db(user_id: str, db=None) -> dict | None:
             for c in db_convs
         ]
 
+        # Debts from DB
+        db_debts = db.query(Debt).filter(Debt.user_id == user_id).all()
+        debts_list = [
+            {
+                "id": str(d.id),
+                "name": d.name,
+                "principal": float(d.principal),
+                "outstanding": float(d.outstanding),
+                "interest_rate": float(d.interest_rate),
+                "emi": float(d.emi),
+                "remaining_months": int(d.remaining_months),
+            }
+            for d in db_debts
+        ]
+        if not debts_list and float(profile_dict.get("total_debt", 0.0)) > 0:
+            tot = float(profile_dict["total_debt"])
+            emi = float(profile_dict.get("monthly_debt_payment") or round(tot * 0.03, 2))
+            default_debt = {
+                "id": str(uuid4()),
+                "name": "Personal / Vehicle Loan",
+                "principal": tot,
+                "outstanding": tot,
+                "interest_rate": 10.5,
+                "emi": emi,
+                "remaining_months": max(12, int(tot / max(1.0, emi))),
+            }
+            try:
+                db_d = Debt(
+                    id=default_debt["id"],
+                    user_id=user_id,
+                    name=default_debt["name"],
+                    principal=default_debt["principal"],
+                    outstanding=default_debt["outstanding"],
+                    interest_rate=default_debt["interest_rate"],
+                    emi=default_debt["emi"],
+                    remaining_months=default_debt["remaining_months"],
+                )
+                db.add(db_d)
+                db.commit()
+                debts_list.append(default_debt)
+            except Exception:
+                db.rollback()
+                debts_list.append(default_debt)
+
         user_entry = {
             "id": db_user.id,
             "name": db_user.name,
@@ -357,7 +409,7 @@ def _load_user_state_from_db(user_id: str, db=None) -> dict | None:
                 "deleted_transactions": deleted_txns,
                 "budgets": budgets_list,
                 "investments": [],
-                "debts": [],
+                "debts": debts_list,
                 "simulation_history": sims_list,
                 "copilot_conversations": convs_list,
                 "notifications": [
@@ -516,14 +568,27 @@ def state_copy(user_id: str) -> dict:
 
 def update_profile(user_id: str, profile: dict) -> dict:
     state = get_state(user_id)
-    state["profile"] = profile
+    u_obj = DATABASE["users"].get(user_id) or {}
+    real_name = u_obj.get("name")
+    real_email = u_obj.get("email")
 
     if SessionLocal:
         try:
             db = SessionLocal()
+            db_user = db.query(User).filter(User.id == user_id).first()
+            if db_user:
+                real_name = db_user.name
+                real_email = db_user.email
+
+            # Guard against demo profile leaking over real account details
+            if profile.get("name") in ("Arjun Verma", None, "") and real_name and real_name != "Arjun Verma":
+                profile["name"] = real_name
+            if profile.get("email") in ("arjun.verma@example.com", None, "") and real_email and real_email != "arjun.verma@example.com":
+                profile["email"] = real_email
+
             db_prof = db.query(FinancialProfile).filter(FinancialProfile.user_id == user_id).first()
             if not db_prof:
-                db_prof = FinancialProfile(id=str(uuid4()), user_id=user_id)
+                db_prof = FinancialProfile(id=str(uuid4()), user_id=user_id, name=profile.get("name") or real_name, email=profile.get("email") or real_email)
                 db.add(db_prof)
 
             fields = [
@@ -545,6 +610,7 @@ def update_profile(user_id: str, profile: dict) -> dict:
         except Exception as e:
             print(f"[DB update_profile] Error: {e}")
 
+    state["profile"] = profile
     return deepcopy(profile)
 
 
@@ -606,7 +672,7 @@ def _sync_to_postgres(user_id: str, txn: dict | None = None, profile: dict | Non
             fields = [
                 "emergency_fund", "savings_balance", "investments_balance",
                 "mutual_funds", "stocks", "fixed_deposits", "gold", "provident_fund",
-                "total_debt", "monthly_income", "detailed_expenses"
+                "total_debt", "monthly_debt_payment", "monthly_income", "detailed_expenses"
             ]
             for f in fields:
                 if f in profile and profile[f] is not None:
@@ -842,6 +908,168 @@ def add_simulation(user_id: str, simulation: dict) -> dict:
             print(f"[DB add_simulation] Error: {e}")
 
     return deepcopy(history_item)
+
+
+def add_debt(user_id: str, debt_data: dict) -> dict:
+    state = get_state(user_id)
+    debts = state.setdefault("debts", [])
+
+    debt_id = str(debt_data.get("id") or uuid4())
+    principal = float(debt_data.get("principal", 0.0))
+    outstanding = float(debt_data.get("outstanding", principal))
+    interest_rate = float(debt_data.get("interest_rate", 10.0))
+    emi = float(debt_data.get("emi", 0.0))
+    remaining_months = int(debt_data.get("remaining_months", 12))
+    name = str(debt_data.get("name", "Loan")).strip()
+
+    new_debt = {
+        "id": debt_id,
+        "name": name,
+        "principal": principal,
+        "outstanding": outstanding,
+        "interest_rate": interest_rate,
+        "emi": emi,
+        "remaining_months": remaining_months,
+    }
+    debts.append(new_debt)
+
+    state["profile"]["total_debt"] = max(0.0, round(sum(float(d.get("outstanding", 0.0)) for d in debts), 2))
+    state["profile"]["monthly_debt_payment"] = max(0.0, round(sum(float(d.get("emi", 0.0)) for d in debts), 2))
+
+    if SessionLocal:
+        try:
+            db = SessionLocal()
+            db_d = Debt(
+                id=debt_id,
+                user_id=user_id,
+                name=name,
+                principal=principal,
+                outstanding=outstanding,
+                interest_rate=interest_rate,
+                emi=emi,
+                remaining_months=remaining_months,
+            )
+            db.add(db_d)
+            db.commit()
+            db.close()
+        except Exception as e:
+            print(f"[DB add_debt] Error: {e}")
+
+    _sync_to_postgres(user_id, profile=state["profile"])
+    return deepcopy(new_debt)
+
+
+def update_debt(user_id: str, debt_id: str, debt_data: dict) -> dict:
+    state = get_state(user_id)
+    debts = state.setdefault("debts", [])
+    target = None
+    for d in debts:
+        if str(d.get("id")) == str(debt_id):
+            target = d
+            break
+    if not target:
+        raise ValueError(f"Debt {debt_id} not found")
+
+    if "name" in debt_data: target["name"] = str(debt_data["name"]).strip()
+    if "principal" in debt_data: target["principal"] = float(debt_data["principal"])
+    if "outstanding" in debt_data: target["outstanding"] = float(debt_data["outstanding"])
+    if "interest_rate" in debt_data: target["interest_rate"] = float(debt_data["interest_rate"])
+    if "emi" in debt_data: target["emi"] = float(debt_data["emi"])
+    if "remaining_months" in debt_data: target["remaining_months"] = int(debt_data["remaining_months"])
+
+    state["profile"]["total_debt"] = max(0.0, round(sum(float(d.get("outstanding", 0.0)) for d in debts), 2))
+    state["profile"]["monthly_debt_payment"] = max(0.0, round(sum(float(d.get("emi", 0.0)) for d in debts), 2))
+
+    if SessionLocal:
+        try:
+            db = SessionLocal()
+            db_d = db.query(Debt).filter(Debt.id == debt_id, Debt.user_id == user_id).first()
+            if db_d:
+                db_d.name = target["name"]
+                db_d.principal = target["principal"]
+                db_d.outstanding = target["outstanding"]
+                db_d.interest_rate = target["interest_rate"]
+                db_d.emi = target["emi"]
+                db_d.remaining_months = target["remaining_months"]
+                db.commit()
+            db.close()
+        except Exception as e:
+            print(f"[DB update_debt] Error: {e}")
+
+    _sync_to_postgres(user_id, profile=state["profile"])
+    return deepcopy(target)
+
+
+def delete_debt(user_id: str, debt_id: str) -> None:
+    state = get_state(user_id)
+    debts = state.setdefault("debts", [])
+    state["debts"] = [d for d in debts if str(d.get("id")) != str(debt_id)]
+
+    state["profile"]["total_debt"] = max(0.0, round(sum(float(d.get("outstanding", 0.0)) for d in state["debts"]), 2))
+    state["profile"]["monthly_debt_payment"] = max(0.0, round(sum(float(d.get("emi", 0.0)) for d in state["debts"]), 2))
+
+    if SessionLocal:
+        try:
+            db = SessionLocal()
+            db.query(Debt).filter(Debt.id == debt_id, Debt.user_id == user_id).delete()
+            db.commit()
+            db.close()
+        except Exception as e:
+            print(f"[DB delete_debt] Error: {e}")
+
+    _sync_to_postgres(user_id, profile=state["profile"])
+
+
+def prepay_debt(user_id: str, debt_id: str, amount: float) -> dict:
+    state = get_state(user_id)
+    debts = state.setdefault("debts", [])
+    target = None
+    for d in debts:
+        if str(d.get("id")) == str(debt_id):
+            target = d
+            break
+    if not target:
+        raise ValueError(f"Debt {debt_id} not found")
+
+    amount = max(0.0, float(amount))
+    new_outstanding = max(0.0, round(float(target["outstanding"]) - amount, 2))
+
+    if target["outstanding"] > 0 and target["remaining_months"] > 0:
+        ratio = new_outstanding / target["outstanding"]
+        target["remaining_months"] = max(0 if new_outstanding == 0 else 1, round(target["remaining_months"] * ratio))
+    target["outstanding"] = new_outstanding
+
+    if new_outstanding == 0:
+        target["emi"] = 0.0
+
+    state["profile"]["total_debt"] = max(0.0, round(sum(float(d.get("outstanding", 0.0)) for d in debts), 2))
+    state["profile"]["monthly_debt_payment"] = max(0.0, round(sum(float(d.get("emi", 0.0)) for d in debts), 2))
+
+    txn_data = {
+        "id": str(uuid4()),
+        "date": str(date.today()),
+        "description": f"Principal Prepayment - {target['name']}",
+        "category": "Extra Loan Repayment",
+        "type": "expense",
+        "amount": amount,
+    }
+    state["transactions"].insert(0, txn_data)
+
+    if SessionLocal:
+        try:
+            db = SessionLocal()
+            db_d = db.query(Debt).filter(Debt.id == debt_id, Debt.user_id == user_id).first()
+            if db_d:
+                db_d.outstanding = target["outstanding"]
+                db_d.remaining_months = target["remaining_months"]
+                db_d.emi = target["emi"]
+                db.commit()
+            db.close()
+        except Exception as e:
+            print(f"[DB prepay_debt] Error: {e}")
+
+    _sync_to_postgres(user_id, profile=state["profile"], txn=txn_data)
+    return deepcopy(target)
 
 
 def add_conversation(user_id: str, question: str, answer: str) -> dict:

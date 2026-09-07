@@ -157,14 +157,60 @@ def build_dashboard(profile: FinancialProfile, transactions: list[dict], budgets
 
     from datetime import date
     today = date.today()
-    month_labels = []
+    monthly_buckets = {}
+    factors = [0.92, 0.95, 1.02, 0.98, 1.0]
     for offset in range(4, -1, -1):
         m = today.month - offset
         y = today.year
         while m <= 0:
             m += 12
             y -= 1
-        month_labels.append(date(y, m, 1).strftime("%b"))
+        key = (y, m)
+        label = date(y, m, 1).strftime("%b")
+        monthly_buckets[key] = {
+            "month": label,
+            "income": 0.0,
+            "expenses": 0.0,
+        }
+
+    for txn in (transactions or []):
+        t_date_raw = txn.get("date") or txn.get("transaction_date")
+        if not t_date_raw:
+            continue
+        try:
+            if isinstance(t_date_raw, str):
+                t_date = date.fromisoformat(t_date_raw[:10])
+            elif isinstance(t_date_raw, date):
+                t_date = t_date_raw
+            else:
+                continue
+            k = (t_date.year, t_date.month)
+            if k in monthly_buckets:
+                amt = float(txn.get("amount", 0.0))
+                tt = (txn.get("type") or "expense").lower()
+                if tt == "income":
+                    monthly_buckets[k]["income"] += amt
+                elif tt in ("expense", "debit"):
+                    monthly_buckets[k]["expenses"] += amt
+        except Exception:
+            pass
+
+    baseline_income = income if income > 0 else 50000.0
+    baseline_expenses = monthly_expenses
+    if baseline_expenses <= 0 and baseline_income > 0:
+        baseline_expenses = round(baseline_income * 0.72, 2)
+
+    month_labels = [b["month"] for b in monthly_buckets.values()]
+    income_expense_chart = []
+    for idx, (k, b) in enumerate(monthly_buckets.items()):
+        f = factors[idx % len(factors)]
+        m_inc = b["income"] if b["income"] > 0 else baseline_income
+        m_exp = b["expenses"] if b["expenses"] > 0 else round(baseline_expenses * f, 2)
+        income_expense_chart.append({
+            "month": b["month"],
+            "income": round(m_inc, 2),
+            "expenses": round(m_exp, 2),
+        })
 
     return {
         "greeting": f"Good morning, {profile.name.split()[0]}",
@@ -180,13 +226,7 @@ def build_dashboard(profile: FinancialProfile, transactions: list[dict], budgets
         "ai_brief": generate_ai_brief(profile, transactions, budgets, goals, score, cash_flow),
         "charts": {
             "net_worth": projected,
-            "income_expense": [
-                {"month": month_labels[0], "income": income, "expenses": round(monthly_expenses * 0.92, 2)},
-                {"month": month_labels[1], "income": income, "expenses": round(monthly_expenses * 0.95, 2)},
-                {"month": month_labels[2], "income": income, "expenses": round(monthly_expenses * 1.02, 2)},
-                {"month": month_labels[3], "income": income, "expenses": round(monthly_expenses * 0.98, 2)},
-                {"month": month_labels[4], "income": income, "expenses": round(monthly_expenses, 2)},
-            ],
+            "income_expense": income_expense_chart,
             "asset_allocation": asset_allocation(profile),
             "health_trend": [
                 {"month": month_labels[0], "score": max(score["score"] - 6, 0)},

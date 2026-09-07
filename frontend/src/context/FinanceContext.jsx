@@ -29,7 +29,7 @@ const initialData = {
 };
 
 export function FinanceProvider({ children }) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [data, setData] = useState(initialData);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -40,7 +40,7 @@ export function FinanceProvider({ children }) {
     setError("");
     try {
       const [
-        profile,
+        rawProfile,
         dashboard,
         transactions,
         budget,
@@ -82,6 +82,13 @@ export function FinanceProvider({ children }) {
         api.ai.anomalies().catch(() => ({ anomalies: [], count: 0 })),
         api.recurringTransactions().catch(() => ({ recurring: [] })),
       ]);
+
+      const profile = {
+        ...rawProfile,
+        name: (user?.name && rawProfile?.name === "Arjun Verma") ? user.name : (rawProfile?.name || user?.name || "Client"),
+        email: (user?.email && rawProfile?.email === "arjun.verma@example.com") ? user.email : (rawProfile?.email || user?.email || ""),
+      };
+
       setData({
         profile,
         dashboard,
@@ -112,14 +119,26 @@ export function FinanceProvider({ children }) {
       } else {
         setError("Backend unavailable. Local sample data remains visible.");
       }
-      setData((current) => ({ ...current, profile: current.profile || demoProfile }));
+      setData((current) => ({
+        ...current,
+        profile: {
+          ...(current.profile || demoProfile),
+          name: user?.name || current.profile?.name || "Client",
+          email: user?.email || current.profile?.email || "",
+        },
+      }));
     } finally {
       setLoading(false);
     }
   }
 
   async function saveProfile(profile) {
-    const updated = await api.updateProfile(profile);
+    const payload = {
+      ...profile,
+      name: (user?.name && profile.name === "Arjun Verma") ? user.name : (profile.name || user?.name || "Client"),
+      email: (user?.email && profile.email === "arjun.verma@example.com") ? user.email : (profile.email || user?.email || ""),
+    };
+    const updated = await api.updateProfile(payload);
     setData((current) => ({ ...current, profile: updated }));
     await refresh();
   }
@@ -368,6 +387,51 @@ export function FinanceProvider({ children }) {
     }
   }
 
+  async function addDebt(debt) {
+    setError("");
+    try {
+      await api.addDebt(debt);
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not add debt obligation.");
+      throw err;
+    }
+  }
+
+  async function updateDebt(id, debt) {
+    setError("");
+    try {
+      await api.updateDebt(id, debt);
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not update debt obligation.");
+      throw err;
+    }
+  }
+
+  async function deleteDebt(id) {
+    setError("");
+    try {
+      await api.deleteDebt(id);
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not delete debt obligation.");
+      throw err;
+    }
+  }
+
+  async function prepayDebt(id, amount) {
+    setError("");
+    try {
+      const res = await api.prepayDebt(id, amount);
+      await refresh();
+      return res;
+    } catch (err) {
+      setError(err.message || "Could not apply debt prepayment.");
+      throw err;
+    }
+  }
+
   useEffect(() => {
     refresh();
   }, [token]);
@@ -390,6 +454,10 @@ export function FinanceProvider({ children }) {
       addGoal,
       updateGoal,
       deleteGoal,
+      addDebt,
+      updateDebt,
+      deleteDebt,
+      prepayDebt,
       fetchForecast,
       runSimulation,
       askCopilot,

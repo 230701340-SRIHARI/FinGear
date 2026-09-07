@@ -13,14 +13,6 @@ class ScoreComponent:
     reason: str
 
 
-def total_expenses(profile: FinancialProfile) -> float:
-    return sum(item.amount for item in profile.monthly_expenses)
-
-
-def monthly_cash_flow(profile: FinancialProfile) -> float:
-    return profile.monthly_income - total_expenses(profile) - profile.monthly_debt_payment
-
-
 def clamp(value: float, low: float = 0, high: float = 100) -> int:
     return int(max(low, min(high, round(value))))
 
@@ -34,6 +26,19 @@ from app.services.financial_health import (
     compute_financial_health_score,
     get_tier_by_income,
 )
+
+
+def total_expenses(profile: FinancialProfile) -> float:
+    exp_list = getattr(profile, "detailed_expenses", None) or getattr(profile, "monthly_expenses", None) or []
+    total = sum(float(getattr(item, "amount", 0.0)) for item in exp_list)
+    if total <= 0 and float(profile.monthly_income or 0.0) > 0:
+        tier = get_tier_by_income(float(profile.monthly_income))
+        total = round(float(profile.monthly_income) * ((tier.needs_pct + tier.wants_pct) / 100.0), 2)
+    return total
+
+
+def monthly_cash_flow(profile: FinancialProfile) -> float:
+    return float(profile.monthly_income or 0.0) - total_expenses(profile) - float(profile.monthly_debt_payment or 0.0)
 
 
 def get_income_tier_info(income: float, profile: FinancialProfile | None = None) -> dict:
@@ -179,7 +184,8 @@ def _goal_projection(goal: Goal, available_monthly: float, profile: FinancialPro
 
 
 def simulate(profile: FinancialProfile, scenario: Scenario) -> dict:
-    scenario_expenses = [item.model_copy() for item in profile.monthly_expenses]
+    base_exp = getattr(profile, "detailed_expenses", None) or getattr(profile, "monthly_expenses", None) or []
+    scenario_expenses = [item.model_copy() for item in base_exp]
     if scenario.expense_change > 0:
         scenario_expenses.append(ExpenseItem(category="Scenario change", amount=scenario.expense_change))
     elif scenario.expense_change < 0 and scenario_expenses:
@@ -190,12 +196,19 @@ def simulate(profile: FinancialProfile, scenario: Scenario) -> dict:
         scenario_expenses.append(ExpenseItem(category="Extra investment", amount=scenario.extra_monthly_investment))
 
     simulated_goals = [g.model_copy() for g in profile.goals]
-    if scenario.target_goal_name:
+    extra_cash = float(scenario.income_change or 0.0) - float(scenario.expense_change or 0.0) + float(scenario.extra_monthly_investment or 0.0)
+    target_name = (scenario.target_goal_name or "").strip().lower()
+
+    matched = False
+    if target_name:
         for sg in simulated_goals:
-            if sg.name == scenario.target_goal_name:
-                extra_cash = scenario.income_change - scenario.expense_change + scenario.extra_monthly_investment
-                sg.monthly_contribution += extra_cash
+            if (sg.name or "").strip().lower() == target_name:
+                sg.monthly_contribution = max(0.0, float(sg.monthly_contribution or 0.0) + extra_cash)
+                matched = True
                 break
+
+    if not matched and simulated_goals and extra_cash != 0:
+        simulated_goals[0].monthly_contribution = max(0.0, float(simulated_goals[0].monthly_contribution or 0.0) + extra_cash)
 
     simulated = profile.model_copy(
         update={

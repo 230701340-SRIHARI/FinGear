@@ -14,13 +14,20 @@ export function Simulator() {
   const [scenario, setScenario] = useState(
     location.state?.scenario || { name: "", scenario_type: "Salary Change", income_change: 10000, expense_change: 3000, extra_monthly_investment: 5000, new_monthly_loan_payment: 0, investment_return_change: 0 }
   );
+  const [targetGoalName, setTargetGoalName] = useState(
+    location.state?.target_goal_name || location.state?.scenario?.target_goal_name || ""
+  );
   const [result, setResult] = useState(null);
   const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
     if (location.state?.scenario) {
       setScenario(location.state.scenario);
-      window.history.replaceState({}, document.title) // Clear state so refresh doesn't hold it forever
+      const tgt = location.state.target_goal_name || location.state.scenario.target_goal_name;
+      if (tgt) {
+        setTargetGoalName(tgt);
+      }
+      window.history.replaceState({}, document.title); // Clear state so refresh doesn't hold it forever
     }
   }, [location.state]);
 
@@ -29,6 +36,7 @@ export function Simulator() {
     setProcessing(true);
     const payload = {
       ...scenario,
+      target_goal_name: targetGoalName || scenario.target_goal_name || null,
       name: scenario.name?.trim() || `${scenario.scenario_type} Simulation`
     };
     setResult(await runSimulation(payload));
@@ -52,7 +60,7 @@ export function Simulator() {
   const showInvestment = isCustom || scenario.scenario_type === "Increase SIP";
   const showEMI = isCustom || ["New Loan", "Vehicle Purchase", "Home Purchase"].includes(scenario.scenario_type);
 
-  const expenses = profile.monthly_expenses.reduce((sum, item) => sum + item.amount, 0);
+  const expenses = (profile.detailed_expenses?.length ? profile.detailed_expenses : profile.monthly_expenses).reduce((sum, item) => sum + item.amount, 0);
   const cashFlow = profile.monthly_income - expenses - profile.monthly_debt_payment;
   const chart = result ? [
     { label: "Health", current: result.base_score, simulated: result.simulated_score },
@@ -60,18 +68,24 @@ export function Simulator() {
     { label: "Net worth", current: Math.round(result.baseline_net_worth / 10000), simulated: Math.round(result.projected_net_worth / 10000) },
   ] : [];
 
-  const targetGoalName = location.state?.target_goal_name;
+  const activeTargetName = targetGoalName || scenario.target_goal_name || goals?.analysis?.[0]?.name;
   let targetGoalImpact = null;
-  if (result && targetGoalName) {
-    const baseGoal = goals.analysis?.find(g => g.name === targetGoalName);
-    const simGoal = result.goals?.find(g => g.name === targetGoalName);
+  if (result && activeTargetName) {
+    const baseGoal = goals?.analysis?.find(g => (g.name || "").toLowerCase() === activeTargetName.toLowerCase());
+    const simGoal = result.goals?.find(g => (g.name || "").toLowerCase() === activeTargetName.toLowerCase());
     if (baseGoal && simGoal) {
+      const probDiff = simGoal.achievement_probability - baseGoal.achievement_probability;
+      const baseMo = baseGoal.expected_months || baseGoal.target_months;
+      const simMo = simGoal.expected_months || simGoal.target_months;
+      const timeDiff = simMo - baseMo;
       targetGoalImpact = {
-        name: targetGoalName,
+        name: baseGoal.name,
         baseProb: baseGoal.achievement_probability,
         simProb: simGoal.achievement_probability,
-        baseExpected: baseGoal.expected_months,
-        simExpected: simGoal.expected_months
+        probDiff,
+        baseExpected: baseMo,
+        simExpected: simMo,
+        timeDiff
       };
     }
   }
@@ -89,6 +103,20 @@ export function Simulator() {
                 {scenarioTypes.map((item) => <option key={item}>{item}</option>)}
               </select>
             </Field>
+            <Field label="Target Goal (Strategy Direction)">
+              <select 
+                value={targetGoalName} 
+                onChange={(e) => {
+                  setTargetGoalName(e.target.value);
+                  setScenario({ ...scenario, target_goal_name: e.target.value });
+                }}
+              >
+                <option value="">-- Auto: Primary Active Goal --</option>
+                {(goals?.analysis || profile?.goals || []).map((g) => (
+                  <option key={g.name} value={g.name}>{g.name} (Target: {currency(g.target_amount)})</option>
+                ))}
+              </select>
+            </Field>
             {showIncome && <Field label="Income change"><NumberInput value={scenario.income_change} onChange={(val) => setScenario({ ...scenario, income_change: val })} /></Field>}
             {showExpense && <Field label="Expense change"><NumberInput value={scenario.expense_change} onChange={(val) => setScenario({ ...scenario, expense_change: val })} /></Field>}
             {showInvestment && <Field label="Extra investment"><NumberInput value={scenario.extra_monthly_investment} onChange={(val) => setScenario({ ...scenario, extra_monthly_investment: val })} /></Field>}
@@ -103,34 +131,42 @@ export function Simulator() {
       </section>
       {result && (
         <>
-          {!targetGoalName && (
-            <>
-              <section className="metric-grid">
-                <MetricCard icon={<Activity />} label="Financial Health" value={`${result.base_score} → ${result.simulated_score}`} detail={`${result.score_delta > 0 ? "+" : ""}${result.score_delta} points`} tone={result.score_delta >= 0 ? "success" : "warning"} />
-                <MetricCard icon={<Calculator />} label="Monthly Cash Flow" value={`${currency(result.base_cash_flow)} → ${currency(result.simulated_cash_flow)}`} detail={currency(result.cash_flow_delta)} tone="info" />
-                <MetricCard icon={<ArrowRight />} label="Projected Net Worth" value={currency(result.projected_net_worth)} detail="12 month simulated state" tone="ai" />
-              </section>
-              <section className="grid-2">
-                <Card><div className="section-title">Current vs simulated state</div><ScenarioBars data={chart} /></Card>
-                <Card glow><div className="section-title">Decision recommendation</div><p className="recommendation">{result.recommendation}</p><div className="state-list">{result.goals?.map((goal) => <span key={goal.name}>{goal.name}: {goal.achievement_probability}% achievable</span>)}</div></Card>
-              </section>
-            </>
-          )}
+          <section className="metric-grid">
+            <MetricCard icon={<Activity />} label="Financial Health" value={`${result.base_score} → ${result.simulated_score}`} detail={`${result.score_delta > 0 ? "+" : ""}${result.score_delta} points`} tone={result.score_delta >= 0 ? "success" : "warning"} />
+            <MetricCard icon={<Calculator />} label="Monthly Cash Flow" value={`${currency(result.base_cash_flow)} → ${currency(result.simulated_cash_flow)}`} detail={currency(result.cash_flow_delta)} tone="info" />
+            <MetricCard icon={<ArrowRight />} label="Projected Net Worth" value={currency(result.projected_net_worth)} detail="12 month simulated state" tone="ai" />
+          </section>
+          
           {targetGoalImpact && (
-            <Card glow style={{ marginTop: '20px', border: '1px solid var(--accent-success)' }}>
-              <div className="section-title"><Goal /> Impact on: {targetGoalImpact.name}</div>
-              <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
-                 <div>
-                   <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Probability</div>
-                   <div style={{ fontSize: '24px', fontWeight: 'bold', color: targetGoalImpact.simProb >= targetGoalImpact.baseProb ? 'var(--accent-success)' : 'inherit' }}>{targetGoalImpact.baseProb}% → {targetGoalImpact.simProb}%</div>
+            <Card glow style={{ marginBottom: '24px', border: '1px solid var(--accent-success)' }}>
+              <div className="section-title"><Goal /> Impact on Goal: {targetGoalImpact.name}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginTop: '14px' }}>
+                 <div style={{ background: 'var(--surface-hover)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                   <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px' }}>Achievement Probability</div>
+                   <div style={{ fontSize: '22px', fontWeight: 'bold', color: targetGoalImpact.simProb >= targetGoalImpact.baseProb ? 'var(--accent-success)' : 'var(--accent-warning)' }}>
+                     {targetGoalImpact.baseProb}% → {targetGoalImpact.simProb}%
+                   </div>
+                   <div style={{ fontSize: '12px', marginTop: '4px', color: targetGoalImpact.probDiff >= 0 ? 'var(--accent-success)' : 'var(--accent-warning)' }}>
+                     {targetGoalImpact.probDiff > 0 ? `+${targetGoalImpact.probDiff}% feasibility boost` : targetGoalImpact.probDiff === 0 ? "Maintained feasibility" : `${targetGoalImpact.probDiff}% feasibility drop`}
+                   </div>
                  </div>
-                 <div>
-                   <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Time to reach</div>
-                   <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{targetGoalImpact.baseExpected || "N/A"} mo → {targetGoalImpact.simExpected || "N/A"} mo</div>
+                 <div style={{ background: 'var(--surface-hover)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                   <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px' }}>Estimated Time to Reach</div>
+                   <div style={{ fontSize: '22px', fontWeight: 'bold', color: targetGoalImpact.timeDiff <= 0 ? 'var(--accent-success)' : 'var(--accent-warning)' }}>
+                     {targetGoalImpact.baseExpected} mo → {targetGoalImpact.simExpected} mo
+                   </div>
+                   <div style={{ fontSize: '12px', marginTop: '4px', color: targetGoalImpact.timeDiff <= 0 ? 'var(--accent-success)' : 'var(--accent-warning)' }}>
+                     {targetGoalImpact.timeDiff < 0 ? `${Math.abs(targetGoalImpact.timeDiff)} months faster!` : targetGoalImpact.timeDiff === 0 ? "Target timeline maintained" : `Delayed by ${targetGoalImpact.timeDiff} months`}
+                   </div>
                  </div>
               </div>
             </Card>
           )}
+
+          <section className="grid-2">
+            <Card><div className="section-title">Current vs simulated state</div><ScenarioBars data={chart} /></Card>
+            <Card glow><div className="section-title">Decision recommendation</div><p className="recommendation">{result.recommendation}</p><div className="state-list">{result.goals?.map((goal) => <span key={goal.name}>{goal.name}: {goal.achievement_probability}% achievable</span>)}</div></Card>
+          </section>
         </>
       )}
       <QuickLinks links={[

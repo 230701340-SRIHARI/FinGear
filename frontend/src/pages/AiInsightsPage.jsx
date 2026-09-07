@@ -1,13 +1,13 @@
-import { Activity, AlertTriangle, BrainCircuit, CheckCircle2, CircleDollarSign, Cpu, Database, LineChart, RotateCcw, Shield, Sparkles, TrendingUp, Zap } from "lucide-react";
+import { Activity, AlertTriangle, BrainCircuit, CheckCircle2, CircleDollarSign, Cpu, Database, Layers, LineChart, Receipt, RotateCcw, Shield, ShoppingBag, Sparkles, TrendingUp, Utensils, Zap } from "lucide-react";
 import { useState } from "react";
 import { Badge, Button, Card, ConfirmModal, EmptyState, MetricCard, PageHeader, Progress, QuickLinks } from "../components/ui";
 import { useFinance } from "../context/FinanceContext";
 import { currency } from "../lib/format";
 
 const UNIVERSE_LABELS = {
-  FOOD: { label: "Food", icon: "🍔", color: "var(--accent-success)" },
-  SHOPPING: { label: "Shopping & Entertainment", icon: "🛍️", color: "var(--accent-warning)" },
-  OTHERS: { label: "Bills & Other", icon: "📋", color: "var(--accent)" },
+  FOOD: { label: "Food", Icon: Utensils, color: "var(--accent-success)" },
+  SHOPPING: { label: "Shopping & Entertainment", Icon: ShoppingBag, color: "var(--accent-warning)" },
+  OTHERS: { label: "Bills & Other", Icon: Receipt, color: "var(--accent)" },
 };
 
 export function AiInsights() {
@@ -132,11 +132,12 @@ export function AiInsights() {
         {aiStatus?.anomaly_detection && (
           <div className="ai-universe-grid">
             {Object.entries(aiStatus.anomaly_detection).map(([key, info]) => {
-              const meta = UNIVERSE_LABELS[key] || { label: key, icon: "📊", color: "var(--text-muted)" };
+              const meta = UNIVERSE_LABELS[key] || { label: key, Icon: Layers, color: "var(--text-muted)" };
+              const IconComp = meta.Icon || Layers;
               return (
                 <div key={key} className="ai-universe-card">
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span style={{ fontSize: "20px" }}>{meta.icon}</span>
+                    <IconComp size={18} style={{ color: meta.color }} />
                     <strong>{meta.label}</strong>
                     <Badge tone={info.phase === 1 ? "success" : "info"}>{info.phase === 1 ? "Active" : "Learning"}</Badge>
                   </div>

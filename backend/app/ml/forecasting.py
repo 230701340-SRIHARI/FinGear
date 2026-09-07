@@ -373,9 +373,14 @@ class UserForecastingEngine:
         Multi-month horizon projection.
         Blends user-specific Random Forest spending projection + ARIMA time series trend + adaptive cash flow.
         """
+        tier_info = get_income_tier_info(profile.monthly_income, profile)
         expenses = total_expenses(profile)
-        cash_flow = monthly_cash_flow(profile)
-        tier_info = get_income_tier_info(profile.monthly_income)
+        if profile.monthly_income > 0:
+            tier_bench_expenses = round(profile.monthly_income * ((float(tier_info.get("needs_pct", 50.0)) + float(tier_info.get("wants_pct", 30.0))) / 100.0), 2)
+            if expenses < tier_bench_expenses * 0.5:
+                expenses = tier_bench_expenses
+
+        cash_flow = max(0.0, float(profile.monthly_income or 0.0) - expenses - float(profile.monthly_debt_payment or 0.0))
 
         # Check transactions for RF training
         daily_s = _extract_daily_expenses(transactions or [])
@@ -464,7 +469,8 @@ class UserForecastingEngine:
                 "model_engine": "app.ml.forecasting.UserForecastingEngine",
                 "days_trained": distinct_days,
                 "tier_allocation": f"{tier_info.get('name', 'Tier')} ({tier_info.get('needs_pct')}:{tier_info.get('wants_pct')}:{tier_info.get('savings_pct')})",
-                "annualized_investment_yield": "8.5% blended",
+                "monthly_surplus_invested": f"₹{cash_flow:,.0f}/mo surplus allocated to savings and investments",
+                "annualized_investment_yield": "8.5% p.a. diversified compounding on investment balance",
                 "debt_repayment_trajectory": f"Monthly EMI ₹{profile.monthly_debt_payment}",
             },
             metrics={

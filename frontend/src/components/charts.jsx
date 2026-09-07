@@ -21,7 +21,39 @@ import {
 } from "recharts";
 import { currency } from "../lib/format";
 
-const COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ef4444", "#06b6d4"];
+const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#eab308", "#06b6d4", "#8b5cf6", "#ec4899"];
+
+const ASSET_CLASS_COLORS = {
+  "mutual funds": "#3b82f6",          // Primary Blue
+  "stocks": "#10b981",                // Emerald Green
+  "stocks & equities": "#10b981",
+  "equity": "#10b981",
+  "fixed deposits & pf": "#f59e0b",   // Warm Amber
+  "fixed deposits": "#f59e0b",
+  "fixed deposit": "#f59e0b",
+  "fd & debt": "#f59e0b",
+  "fd": "#f59e0b",
+  "debt": "#f59e0b",
+  "gold & precious metals": "#eab308",// Golden Yellow
+  "gold": "#eab308",
+  "cash & liquid": "#06b6d4",         // Cyan Teal
+  "cash": "#06b6d4",
+  "liquid": "#06b6d4",
+  "crypto & alternatives": "#8b5cf6", // Purple
+  "crypto": "#8b5cf6",
+  "real estate": "#ec4899",           // Pink
+};
+
+export function getAssetColor(name, index = 0) {
+  if (!name) return COLORS[index % COLORS.length];
+  const normalized = String(name).toLowerCase().trim();
+  for (const [key, color] of Object.entries(ASSET_CLASS_COLORS)) {
+    if (normalized === key || normalized.includes(key) || key.includes(normalized)) {
+      return color;
+    }
+  }
+  return COLORS[index % COLORS.length];
+}
 
 function useChartColors() {
   const isDark = document.documentElement.classList.contains("dark");
@@ -79,8 +111,8 @@ export const AllocationChart = memo(function AllocationChart({ data = [] }) {
     <ResponsiveContainer width="100%" height={270}>
       <PieChart>
         <Pie data={data} dataKey="value" nameKey="name" innerRadius={62} outerRadius={94} paddingAngle={4}>
-          {data.map((_, index) => (
-            <Cell key={index} fill={COLORS[index % COLORS.length]} />
+          {data.map((entry, index) => (
+            <Cell key={entry.name || index} fill={getAssetColor(entry.name, index)} />
           ))}
         </Pie>
         <Tooltip contentStyle={c.tooltip} formatter={(v) => currency(v)} />

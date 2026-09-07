@@ -1,7 +1,7 @@
 import { Activity, Calendar, Check, CheckCircle2, CircleDollarSign, CreditCard, FileText, FileUp, Goal as GoalIcon, HelpCircle, Landmark, LineChart, MoreVertical, Pencil, Play, Plus, PlusCircle, RefreshCw, RotateCcw, ShieldAlert, SlidersHorizontal, Sparkles, Trash, Trash2, TrendingDown, TrendingUp, UploadCloud, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AllocationChart, NetWorthChart } from "../components/charts";
+import { AllocationChart, NetWorthChart, getAssetColor } from "../components/charts";
 import { Badge, Button, Card, ConfirmModal, EmptyState, Field, MetricCard, NumberInput, PageHeader, Progress, QuickLinks } from "../components/ui";
 import { useFinance } from "../context/FinanceContext";
 import { currency, percent } from "../lib/format";
@@ -243,7 +243,7 @@ export function Transactions() {
         subtitle="Manual expense inputs, PDF bill attachments, 60-day recovery trash bin, income suite updates & multi-phase anomaly detection."
         actions={
           <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-            <Badge tone="ai">🤖 ML Anomaly Ensemble Active</Badge>
+            <Badge tone="ai">ML Anomaly Ensemble Active</Badge>
             <Button onClick={() => setShowForm(true)}>
               <Plus size={17} /> Add Transaction
             </Button>
@@ -326,7 +326,7 @@ export function Transactions() {
                   {/* Anomaly Badge & Action Controls */}
                   {txn.anomaly_flag && (
                     <Badge tone="danger" title={`Anomaly Score: ${((txn.anomaly_score || 0) * 100).toFixed(1)}%`}>
-                      ⚠ Anomaly
+                      Anomaly
                     </Badge>
                   )}
 
@@ -543,13 +543,13 @@ export function Transactions() {
                       <option value="Other">Other Want</option>
                     </optgroup>
                     <optgroup label="Savings, Reserves & Wealth Building">
-                      <option value="Emergency Fund">🛡️ Emergency Fund (Builds Runway & Reserve)</option>
-                      <option value="Fixed Deposit">🏦 Fixed Deposit (FD)</option>
-                      <option value="Mutual Funds">📈 Mutual Funds / SIP</option>
-                      <option value="Stocks">📊 Stocks & Direct Equity</option>
-                      <option value="Gold">🥇 Gold Holdings</option>
-                      <option value="Provident Fund">🏛️ Provident Fund (PPF / EPF)</option>
-                      <option value="Extra Loan Repayment">💳 Extra Loan Principal Repayment</option>
+                      <option value="Emergency Fund">Emergency Fund (Builds Runway & Reserve)</option>
+                      <option value="Fixed Deposit">Fixed Deposit (FD)</option>
+                      <option value="Mutual Funds">Mutual Funds / SIP</option>
+                      <option value="Stocks">Stocks & Direct Equity</option>
+                      <option value="Gold">Gold Holdings</option>
+                      <option value="Provident Fund">Provident Fund (PPF / EPF)</option>
+                      <option value="Extra Loan Repayment">Extra Loan Principal Repayment</option>
                     </optgroup>
                   </>
                 )}
@@ -711,7 +711,7 @@ export function Transactions() {
 }
 
 export function Budget() {
-  const { budget, updateBudgets, recurring } = useFinance();
+  const { budget, updateBudgets, recurring, profile } = useFinance();
   const tier = budget.tier_info || {};
   const [editing, setEditing] = useState(false);
   const [draftItems, setDraftItems] = useState(budget.items || []);
@@ -795,7 +795,7 @@ export function Budget() {
             <div className="section-title"><Sparkles /> Income Tier Benchmark: Tier {tier.tier} — {tier.name} ({tier.range})</div>
             {tier.lifestyle_badge && (
               <Badge tone={tier.lifestyle_preference === "Frugal" ? "success" : tier.lifestyle_preference === "Experience-focused" ? "ai" : "info"}>
-                🌱 Lifestyle: {tier.lifestyle_badge}
+                Lifestyle: {tier.lifestyle_badge}
               </Badge>
             )}
           </div>
@@ -1167,11 +1167,11 @@ export function Goals() {
                 </div>
                 {isOnTrack ? (
                   <p style={{ margin: 0, fontSize: "13px", color: "var(--text-primary)" }}>
-                    🎉 <strong>Right on Schedule:</strong> At your current contribution pace, you will fully achieve this goal in <strong>{goal.expected_months || goal.target_months} months</strong>, meeting your deadline comfortably.
+                    <strong>Right on Schedule:</strong> At your current contribution pace, you will fully achieve this goal in <strong>{goal.expected_months || goal.target_months} months</strong>, meeting your deadline comfortably.
                   </p>
                 ) : (
                   <p style={{ margin: 0, fontSize: "13px", color: "var(--text-primary)" }}>
-                    ⚠️ <strong>Timeline Delay:</strong> At your current contribution of {currency(goal.monthly_contribution)}/mo, this goal will take <strong>{goal.expected_months} months</strong> to reach {currency(goal.target_amount)} — which is <strong>{delayMonths} months later</strong> than your intended target date of {goal.target_date}.
+                    <strong>Timeline Delay:</strong> At your current contribution of {currency(goal.monthly_contribution)}/mo, this goal will take <strong>{goal.expected_months} months</strong> to reach {currency(goal.target_amount)} — which is <strong>{delayMonths} months later</strong> than your intended target date of {goal.target_date}.
                   </p>
                 )}
               </div>
@@ -1201,6 +1201,7 @@ export function Goals() {
                             scenario: { 
                               name: `Accelerate ${goal.name}`, 
                               scenario_type: "Increase SIP", 
+                              target_goal_name: goal.name,
                               extra_monthly_investment: pathASip, 
                               income_change: 0, 
                               expense_change: 0, 
@@ -1230,6 +1231,7 @@ export function Goals() {
                             scenario: { 
                               name: `Balanced Diet for ${goal.name}`, 
                               scenario_type: "Multi-Factor Adjustment", 
+                              target_goal_name: goal.name,
                               extra_monthly_investment: pathBSip, 
                               expense_change: -pathBCut, 
                               income_change: 0, 
@@ -1363,6 +1365,62 @@ export function Goals() {
   );
 }
 
+function getInvestmentFlow(item) {
+  if (item.flow_label && item.holding_type && (!item.monthly_contribution || item.monthly_contribution === 0)) {
+    return {
+      label: item.flow_label,
+      value: item.holding_type,
+      isRecurring: false,
+    };
+  }
+  const ac = (item.asset_class || "").toLowerCase();
+  const contrib = Number(item.monthly_contribution) || 0;
+
+  if (ac.includes("fixed deposit") || ac === "fd") {
+    return {
+      label: item.flow_label || "Deposit Type",
+      value: item.holding_type || "Term Deposit (Fixed)",
+      isRecurring: false,
+    };
+  }
+  if (ac.includes("gold")) {
+    return {
+      label: item.flow_label || "Holding Type",
+      value: item.holding_type || "SGB / Bullion Asset",
+      isRecurring: false,
+    };
+  }
+  if (ac.includes("provident") || ac.includes("ppf") || ac.includes("epf")) {
+    return contrib > 0
+      ? { label: item.flow_label || "Monthly Contribution", value: `${currency(contrib)}/mo`, isRecurring: true }
+      : { label: "Holding Type", value: item.holding_type || "Retirement Corpus", isRecurring: false };
+  }
+  if (ac.includes("mutual fund")) {
+    return contrib > 0
+      ? { label: item.flow_label || "Monthly SIP", value: `${currency(contrib)}/mo`, isRecurring: true }
+      : { label: "Holding Type", value: item.holding_type || "Lump-sum Holding", isRecurring: false };
+  }
+  if (ac.includes("stock") || ac.includes("equity")) {
+    return contrib > 0
+      ? { label: item.flow_label || "Recurring Inflow", value: `${currency(contrib)}/mo`, isRecurring: true }
+      : { label: "Holding Type", value: item.holding_type || "Direct Equity (Lump-sum)", isRecurring: false };
+  }
+
+  // Generic fallback
+  if (contrib > 0) {
+    return {
+      label: item.flow_label || "Monthly Inflow",
+      value: `${currency(contrib)}/mo`,
+      isRecurring: true,
+    };
+  }
+  return {
+    label: item.flow_label || "Investment Mode",
+    value: item.holding_type || "Lump-sum Holding",
+    isRecurring: false,
+  };
+}
+
 export function Investments() {
   const { investments, forecast, profile } = useFinance();
   const [allocView, setAllocView] = useState("current");
@@ -1371,6 +1429,41 @@ export function Investments() {
   const displayedAllocation = allocView === "recommended" 
     ? (investments.recommended_allocation || investments.allocation)
     : investments.allocation;
+
+  const currentAllocation = investments.allocation || [];
+  const recommendedAllocation = investments.recommended_allocation || [];
+
+  const totalCurrentValue = useMemo(() => {
+    return currentAllocation.reduce((sum, it) => sum + (Number(it.value) || 0), 0);
+  }, [currentAllocation]);
+
+  const totalRecommendedValue = useMemo(() => {
+    return recommendedAllocation.reduce((sum, it) => sum + (Number(it.value) || 0), 0);
+  }, [recommendedAllocation]);
+
+  const allocationTableRows = useMemo(() => {
+    return currentAllocation.map((cur, index) => {
+      const rec = recommendedAllocation.find(
+        (r) => r.name?.toLowerCase() === cur.name?.toLowerCase()
+      ) || {};
+
+      const curVal = Number(cur.value) || 0;
+      const curPct = cur.pct != null ? Number(cur.pct) : (totalCurrentValue > 0 ? (curVal / totalCurrentValue) * 100 : 0);
+      const recVal = Number(rec.value) || 0;
+      const recPct = rec.pct != null ? Number(rec.pct) : (totalRecommendedValue > 0 ? (recVal / totalRecommendedValue) * 100 : 0);
+      const drift = Number((curPct - recPct).toFixed(1));
+
+      return {
+        name: cur.name,
+        color: getAssetColor(cur.name, index),
+        currentValue: curVal,
+        currentPct: Number(curPct.toFixed(1)),
+        targetValue: recVal,
+        targetPct: Number(recPct.toFixed(1)),
+        drift,
+      };
+    });
+  }, [currentAllocation, recommendedAllocation, totalCurrentValue, totalRecommendedValue]);
 
   return (
     <>
@@ -1381,11 +1474,11 @@ export function Investments() {
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <Badge tone={riskProfile.appetite === "Aggressive" ? "ai" : riskProfile.appetite === "Conservative" ? "warning" : "info"}>
-              ⚡ Risk Appetite: {riskProfile.appetite}
+              Risk Appetite: {riskProfile.appetite}
             </Badge>
             {profile?.primary_financial_goal && (
               <Badge tone="success">
-                🎯 Goal: {profile.primary_financial_goal}
+                Goal: {profile.primary_financial_goal}
               </Badge>
             )}
           </div>
@@ -1394,7 +1487,7 @@ export function Investments() {
       <section className="metric-grid">
         <MetricCard icon={<WalletCards />} label="Total Investments" value={currency(investments.total)} detail="Asset portfolio" tone="success" />
         <MetricCard icon={<ShieldAlert />} label="Emergency Reserve" value={currency(profile?.emergency_fund || 0)} detail={`${((profile?.emergency_fund || 0) / Math.max(1, (profile?.emergency_target || 200000)) * 100).toFixed(0)}% of target`} tone="info" />
-        <MetricCard icon={<TrendingUp />} label="Monthly Contribution" value={currency(investments.monthly_contribution)} detail="Recurring SIP" tone="info" />
+        <MetricCard icon={<TrendingUp />} label="Monthly Contribution" value={currency(investments.monthly_contribution)} detail="Active SIP & Inflows" tone="info" />
         <MetricCard icon={<Activity />} label="Estimated Return" value={`${investments.estimated_return || 11.5}% p.a.`} detail={`${riskProfile.appetite} risk posture`} tone="ai" />
       </section>
 
@@ -1411,7 +1504,7 @@ export function Investments() {
         </div>
         {investments.rebalancing_advice && (
           <div className="recommendation" style={{ marginTop: "10px" }}>
-            <strong>💡 AI Rebalancing Guidance:</strong> {investments.rebalancing_advice}
+            <strong>AI Rebalancing Guidance:</strong> {investments.rebalancing_advice}
           </div>
         )}
       </Card>
@@ -1441,11 +1534,150 @@ export function Investments() {
             {allocView === "current" ? "Actual distribution of your tracked holdings." : `Target optimal distribution for a ${riskProfile.appetite} investor.`}
           </p>
           <AllocationChart data={displayedAllocation} />
+
+          {/* Asset Allocation Breakdown Table */}
+          <div style={{ marginTop: '16px', border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden', background: 'var(--surface)' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ background: 'var(--surface-hover)', borderBottom: '1px solid var(--border-color)' }}>
+                    <th style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--text-secondary)' }}>Asset Class</th>
+                    <th style={{ 
+                      padding: '8px 10px', 
+                      textAlign: 'right', 
+                      fontWeight: 600, 
+                      color: allocView === 'current' ? 'var(--accent)' : 'var(--text-secondary)',
+                      background: allocView === 'current' ? 'rgba(59, 130, 246, 0.06)' : 'transparent'
+                    }}>
+                      Current {allocView === 'current' ? '●' : ''}
+                    </th>
+                    <th style={{ 
+                      padding: '8px 10px', 
+                      textAlign: 'right', 
+                      fontWeight: 600, 
+                      color: allocView === 'recommended' ? 'var(--accent)' : 'var(--text-secondary)',
+                      background: allocView === 'recommended' ? 'rgba(59, 130, 246, 0.06)' : 'transparent'
+                    }}>
+                      Target ({riskProfile.appetite}) {allocView === 'recommended' ? '●' : ''}
+                    </th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                      Drift
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allocationTableRows.map((row) => {
+                    let driftTone = '#10b981';
+                    let driftBg = 'rgba(16, 185, 129, 0.1)';
+                    let driftText = 'Balanced';
+                    if (row.drift > 2.0) {
+                      driftTone = '#f59e0b';
+                      driftBg = 'rgba(245, 158, 11, 0.1)';
+                      driftText = `+${row.drift}% (Over)`;
+                    } else if (row.drift < -2.0) {
+                      driftTone = '#3b82f6';
+                      driftBg = 'rgba(59, 130, 246, 0.1)';
+                      driftText = `${row.drift}% (Under)`;
+                    }
+
+                    return (
+                      <tr key={row.name} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '8px 10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ 
+                            width: '8px', 
+                            height: '8px', 
+                            borderRadius: '50%', 
+                            backgroundColor: row.color, 
+                            display: 'inline-block',
+                            boxShadow: `0 0 6px ${row.color}88`,
+                            flexShrink: 0
+                          }} />
+                          <strong style={{ color: 'var(--text-primary)', fontSize: '12px' }}>{row.name}</strong>
+                        </td>
+                        <td style={{ 
+                          padding: '8px 10px', 
+                          textAlign: 'right',
+                          background: allocView === 'current' ? 'rgba(59, 130, 246, 0.04)' : 'transparent'
+                        }}>
+                          <span style={{ fontWeight: 600, color: 'var(--text-primary)', display: 'block' }}>
+                            {currency(row.currentValue)}
+                          </span>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                            {row.currentPct}%
+                          </span>
+                        </td>
+                        <td style={{ 
+                          padding: '8px 10px', 
+                          textAlign: 'right',
+                          background: allocView === 'recommended' ? 'rgba(59, 130, 246, 0.04)' : 'transparent'
+                        }}>
+                          <span style={{ fontWeight: 600, color: 'var(--text-primary)', display: 'block' }}>
+                            {currency(row.targetValue)}
+                          </span>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                            {row.targetPct}%
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                          <span style={{ 
+                            fontSize: '11px', 
+                            fontWeight: 600, 
+                            color: driftTone,
+                            padding: '2px 5px',
+                            borderRadius: '4px',
+                            background: driftBg,
+                            display: 'inline-block',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            {driftText}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: 'var(--surface-hover)', fontWeight: 600, fontSize: '12px' }}>
+                    <td style={{ padding: '8px 10px', color: 'var(--text-primary)' }}>Total</td>
+                    <td style={{ 
+                      padding: '8px 10px', 
+                      textAlign: 'right',
+                      background: allocView === 'current' ? 'rgba(59, 130, 246, 0.06)' : 'transparent'
+                    }}>
+                      <span style={{ color: 'var(--text-primary)', display: 'block' }}>{currency(totalCurrentValue)}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>100%</span>
+                    </td>
+                    <td style={{ 
+                      padding: '8px 10px', 
+                      textAlign: 'right',
+                      background: allocView === 'recommended' ? 'rgba(59, 130, 246, 0.06)' : 'transparent'
+                    }}>
+                      <span style={{ color: 'var(--text-primary)', display: 'block' }}>{currency(totalRecommendedValue)}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>100%</span>
+                    </td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', fontSize: '11px', color: 'var(--text-muted)' }}>
+                      Balanced
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
         </Card>
-        <Card><div className="section-title">Growth projection</div><NetWorthChart data={forecast.months} /></Card>
+        <Card>
+          <div className="section-title"><TrendingUp /> Growth Projection (24 Months)</div>
+          <p className="muted" style={{ fontSize: "12px", margin: "-4px 0 12px" }}>
+            Model assumptions: Modeled from monthly investable surplus additions ({currency(investments.monthly_contribution || 5000)}/mo) combined with an estimated {investments.estimated_return || 11.5}% p.a. diversified compounding yield.
+          </p>
+          <NetWorthChart data={forecast.months} />
+        </Card>
       </section>
       <Card>
-        <div className="data-table">
+        <div className="section-title"><WalletCards /> Tracked Investment Holdings</div>
+        <p className="muted" style={{ fontSize: "12px", margin: "-4px 0 16px" }}>
+          Itemized breakdown of your portfolio with distinct current valuations, holding types, and active monthly SIP or recurring commitments.
+        </p>
+        <div>
           {Object.entries(
             investments.items.reduce((acc, item) => {
               const category = item.asset_class || "Other";
@@ -1454,18 +1686,41 @@ export function Investments() {
               return acc;
             }, {})
           ).map(([category, items]) => (
-            <div key={category} style={{ marginBottom: '16px' }}>
-              <h3 style={{ margin: '0 0 12px', fontSize: '15px', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>{category}</h3>
+            <div key={category} style={{ marginBottom: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
+                <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 'bold', color: 'var(--text-primary)' }}>{category}</h3>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  Total Balance: {currency(items.reduce((sum, i) => sum + (i.value || 0), 0))}
+                </span>
+              </div>
               <div style={{ display: 'grid', gap: '8px' }}>
-                {items.map((item) => (
-                  <article key={item.name} style={{ border: 'none', padding: '8px 0', borderBottom: '1px solid var(--border-color)', borderRadius: 0 }}>
-                    <strong>{item.name}</strong>
-                    <span style={{ color: 'var(--text-muted)' }}>{item.asset_class}</span>
-                    <b>{currency(item.value)}</b>
-                    <span>{currency(item.monthly_contribution)}/mo</span>
-                    <Badge tone="info">{item.expected_return}% assumed</Badge>
-                  </article>
-                ))}
+                {items.map((item) => {
+                  const flow = getInvestmentFlow(item);
+                  return (
+                    <div key={item.name} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', alignItems: 'center', gap: '12px', padding: '12px 14px', background: 'var(--surface-hover)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                      <div>
+                        <strong style={{ fontSize: '14px', display: 'block', color: 'var(--text-primary)' }}>{item.name}</strong>
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Asset Class: {item.asset_class}</span>
+                      </div>
+                      <div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Current Value</span>
+                        <strong style={{ fontSize: '15px', color: 'var(--text-primary)' }}>{currency(item.value)}</strong>
+                      </div>
+                      <div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>{flow.label}</span>
+                        {flow.isRecurring ? (
+                          <strong style={{ fontSize: '14px', color: 'var(--accent)' }}>{flow.value}</strong>
+                        ) : (
+                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500 }}>{flow.value}</span>
+                        )}
+                      </div>
+                      <div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Expected Return</span>
+                        <Badge tone="info">{item.expected_return}% p.a.</Badge>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -1481,12 +1736,97 @@ export function Investments() {
 }
 
 export function Debt() {
-  const { debt } = useFinance();
+  const { debt, addDebt, deleteDebt, prepayDebt } = useFinance();
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [prepayTarget, setPrepayTarget] = useState(null);
+  const [prepayAmount, setPrepayAmount] = useState(10000);
+  const [prepaying, setPrepaying] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [feedbackToast, setFeedbackToast] = useState("");
+  const [debtForm, setDebtForm] = useState({
+    name: "",
+    principal: 500000,
+    outstanding: 400000,
+    interest_rate: 10.5,
+    emi: 12000,
+    remaining_months: 36,
+  });
+
+  const items = debt.items || [];
   const payoff = useMemo(() => `${debt.debt_free_months || 0} months`, [debt]);
+
+  async function handleAddDebt(e) {
+    e.preventDefault();
+    if (!debtForm.name.trim()) return;
+    setAdding(true);
+    try {
+      await addDebt({
+        name: debtForm.name.trim(),
+        principal: Number(debtForm.principal) || 0,
+        outstanding: Number(debtForm.outstanding) || Number(debtForm.principal) || 0,
+        interest_rate: Number(debtForm.interest_rate) || 0,
+        emi: Number(debtForm.emi) || 0,
+        remaining_months: Number(debtForm.remaining_months) || 12,
+      });
+      setShowAddModal(false);
+      setFeedbackToast(`Added "${debtForm.name.trim()}" successfully! Total liabilities updated.`);
+      setTimeout(() => setFeedbackToast(""), 4000);
+    } catch (err) {
+      alert("Failed to add debt: " + err.message);
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handlePrepay(e) {
+    e.preventDefault();
+    if (!prepayTarget || Number(prepayAmount) <= 0) return;
+    setPrepaying(true);
+    try {
+      await prepayDebt(prepayTarget.id, Number(prepayAmount));
+      setFeedbackToast(`Applied ₹${Number(prepayAmount).toLocaleString("en-IN")} principal prepayment to "${prepayTarget.name}"!`);
+      setPrepayTarget(null);
+      setTimeout(() => setFeedbackToast(""), 4000);
+    } catch (err) {
+      alert("Failed to apply prepayment: " + err.message);
+    } finally {
+      setPrepaying(false);
+    }
+  }
+
+  async function handleDelete(item) {
+    if (!window.confirm(`Are you sure you want to remove "${item.name}"?`)) return;
+    try {
+      await deleteDebt(item.id);
+      setFeedbackToast(`Removed "${item.name}". Total liabilities updated.`);
+      setTimeout(() => setFeedbackToast(""), 4000);
+    } catch (err) {
+      alert("Failed to delete debt: " + err.message);
+    }
+  }
 
   return (
     <>
-      <PageHeader eyebrow="Debt Management" title="Liabilities & EMI Payoff Control" subtitle="Track loan obligations, interest burdens, and tailored accelerated payoff recommendations." />
+      <PageHeader 
+        eyebrow="Debt Management" 
+        title="Liabilities & EMI Payoff Control" 
+        subtitle="Track loan obligations, interest burdens, and tailored accelerated payoff recommendations." 
+        actions={
+          <Button onClick={() => {
+            setDebtForm({ name: "", principal: 500000, outstanding: 400000, interest_rate: 10.5, emi: 12000, remaining_months: 36 });
+            setShowAddModal(true);
+          }}>
+            <Plus size={16} /> Add Loan / Liability
+          </Button>
+        }
+      />
+
+      {feedbackToast && (
+        <div style={{ background: "rgba(16, 185, 129, 0.12)", border: "1px solid var(--accent-success)", color: "var(--accent-success)", padding: "10px 14px", borderRadius: "8px", marginBottom: "16px", fontSize: "14px", fontWeight: 600 }}>
+          {feedbackToast}
+        </div>
+      )}
+
       <section className="metric-grid">
         <MetricCard icon={<CreditCard />} label="Total Debt" value={currency(debt.total)} detail="Outstanding balance" tone="warning" />
         <MetricCard icon={<Calendar />} label="Monthly EMI" value={currency(debt.monthly_emi)} detail="Total monthly outflow" tone="info" />
@@ -1494,47 +1834,178 @@ export function Debt() {
         <MetricCard icon={<GoalIcon />} label="Est. Debt Free" value={payoff} detail="Based on current schedule" tone="ai" />
       </section>
 
-      {/* Individual Debt Cards with In-Line Payoff Recommendations */}
-      <section className="debt-card-grid">
-        {debt.items.map((item) => {
-          const extraEmiEstimate = Math.round(item.emi * 0.2) || 2000;
-          const interestSavingsEstimate = Math.round(item.outstanding * (item.interest_rate / 100) * 0.4);
-          const monthsSavedEstimate = Math.min(item.remaining_months - 2, Math.max(2, Math.round(item.remaining_months * 0.25)));
-
-          return (
-            <div key={item.name} className="debt-card-item">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong style={{ fontSize: '18px', color: 'var(--text-primary)' }}>{item.name}</strong>
-                <Badge tone="warning">{item.remaining_months} months remaining</Badge>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '14px', margin: '6px 0' }}>
-                <div>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '12px', display: 'block' }}>Outstanding</span>
-                  <strong style={{ fontSize: '16px', color: 'var(--text-primary)' }}>{currency(item.outstanding)}</strong>
-                </div>
-                <div>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '12px', display: 'block' }}>Monthly EMI</span>
-                  <strong style={{ fontSize: '16px', color: 'var(--accent)' }}>{currency(item.emi)}</strong>
-                </div>
-                <div>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '12px', display: 'block' }}>Interest Rate</span>
-                  <span>{item.interest_rate}% p.a.</span>
-                </div>
-                <div>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '12px', display: 'block' }}>Estimated Interest</span>
-                  <span>{currency(Math.round(item.outstanding * (item.interest_rate / 100)))}</span>
-                </div>
-              </div>
-
-              {/* In-Line Tailored Payoff Suggestion directly under each debt */}
-              <div className="recommendation" style={{ marginTop: '8px', fontSize: '13px' }}>
-                <strong>Payoff Strategy:</strong> Increasing monthly EMI by <strong>{currency(extraEmiEstimate)}</strong> saves approx. <strong>{currency(interestSavingsEstimate)}</strong> in interest and cuts tenure by <strong>{monthsSavedEstimate} months</strong>.
-              </div>
+      {/* Add Debt Form Card */}
+      {showAddModal && (
+        <Card style={{ marginBottom: "24px", border: "1px solid var(--accent)" }}>
+          <div className="section-title"><CreditCard /> Add Loan or Liability</div>
+          <form onSubmit={handleAddDebt} style={{ display: "grid", gap: "14px", marginTop: "14px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+              <Field label="Loan / Debt Name">
+                <input 
+                  required 
+                  placeholder="e.g. HDFC Home Loan, Car Loan, Education Loan" 
+                  value={debtForm.name} 
+                  onChange={(e) => setDebtForm({ ...debtForm, name: e.target.value })} 
+                />
+              </Field>
+              <Field label="Original Principal (₹)">
+                <NumberInput 
+                  required 
+                  value={debtForm.principal} 
+                  onChange={(val) => setDebtForm({ ...debtForm, principal: val, outstanding: debtForm.outstanding || val })} 
+                  min="1000"
+                />
+              </Field>
+              <Field label="Current Outstanding (₹)">
+                <NumberInput 
+                  required 
+                  value={debtForm.outstanding} 
+                  onChange={(val) => setDebtForm({ ...debtForm, outstanding: val })} 
+                  min="0"
+                />
+              </Field>
             </div>
-          );
-        })}
-      </section>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
+              <Field label="Interest Rate (% p.a.)">
+                <input 
+                  type="number" 
+                  step="0.1" 
+                  required 
+                  value={debtForm.interest_rate} 
+                  onChange={(e) => setDebtForm({ ...debtForm, interest_rate: e.target.value })} 
+                />
+              </Field>
+              <Field label="Monthly EMI (₹)">
+                <NumberInput 
+                  required 
+                  value={debtForm.emi} 
+                  onChange={(val) => setDebtForm({ ...debtForm, emi: val })} 
+                  min="100"
+                />
+              </Field>
+              <Field label="Remaining Tenure (Months)">
+                <input 
+                  type="number" 
+                  required 
+                  min="1" 
+                  value={debtForm.remaining_months} 
+                  onChange={(e) => setDebtForm({ ...debtForm, remaining_months: e.target.value })} 
+                />
+              </Field>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "8px" }}>
+              <Button type="button" variant="ghost" onClick={() => setShowAddModal(false)} disabled={adding}>Cancel</Button>
+              <Button type="submit" disabled={adding}>
+                {adding ? "Saving Loan..." : "Save Loan"}
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {/* Prepayment Dialog */}
+      {prepayTarget && (
+        <Card style={{ marginBottom: "24px", border: "1px solid var(--accent-success)", background: "rgba(16, 185, 129, 0.04)" }}>
+          <div className="section-title"><CircleDollarSign /> Make Principal Prepayment: {prepayTarget.name}</div>
+          <p className="muted" style={{ margin: "4px 0 12px", fontSize: "13px" }}>
+            Current Outstanding: <strong>{currency(prepayTarget.outstanding)}</strong>. Extra principal prepayments reduce interest burden and shorten your remaining repayment tenure.
+          </p>
+          <form onSubmit={handlePrepay} style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
+            <Field label="Prepayment Amount (₹)" style={{ minWidth: "220px" }}>
+              <NumberInput 
+                value={prepayAmount} 
+                onChange={(val) => setPrepayAmount(val)} 
+                min="500"
+                max={prepayTarget.outstanding}
+              />
+            </Field>
+            <Button type="submit" disabled={prepaying}>
+              {prepaying ? "Applying Prepayment..." : `Prepay ${currency(prepayAmount)}`}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setPrepayTarget(null)} disabled={prepaying}>
+              Cancel
+            </Button>
+          </form>
+        </Card>
+      )}
+
+      {/* Individual Debt Cards with In-Line Payoff Recommendations */}
+      {items.length > 0 ? (
+        <section className="debt-card-grid">
+          {items.map((item) => {
+            const extraEmiEstimate = Math.round((Number(item.emi) || 0) * 0.2) || 2000;
+            const interestSavingsEstimate = Math.round((Number(item.outstanding) || 0) * ((Number(item.interest_rate) || 10) / 100) * 0.4);
+            const monthsSavedEstimate = Math.min(Math.max(1, (Number(item.remaining_months) || 12) - 2), Math.max(2, Math.round((Number(item.remaining_months) || 12) * 0.25)));
+            const paidPct = item.principal > 0 ? Math.min(100, Math.max(0, Math.round(((item.principal - item.outstanding) / item.principal) * 100))) : 0;
+
+            return (
+              <div key={item.id || item.name} className="debt-card-item">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                  <strong style={{ fontSize: '18px', color: 'var(--text-primary)' }}>{item.name}</strong>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Badge tone="warning">{item.remaining_months} months remaining</Badge>
+                    <Button 
+                      variant="secondary" 
+                      onClick={() => { setPrepayTarget(item); setPrepayAmount(Math.min(25000, item.outstanding)); }} 
+                      style={{ padding: '4px 10px', fontSize: '12px' }}
+                    >
+                      Prepay
+                    </Button>
+                    <button 
+                      type="button" 
+                      className="icon-button danger" 
+                      onClick={() => handleDelete(item)}
+                      title="Remove or Mark Paid Off"
+                      style={{ padding: '6px' }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ margin: '10px 0 6px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    <span>Payoff Progress ({paidPct}% Paid)</span>
+                    <span>{currency(item.outstanding)} remaining of {currency(item.principal || item.outstanding)}</span>
+                  </div>
+                  <Progress value={paidPct} tone="success" />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '12px', fontSize: '14px', margin: '8px 0' }}>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '12px', display: 'block' }}>Outstanding</span>
+                    <strong style={{ fontSize: '16px', color: 'var(--text-primary)' }}>{currency(item.outstanding)}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '12px', display: 'block' }}>Monthly EMI</span>
+                    <strong style={{ fontSize: '16px', color: 'var(--accent)' }}>{currency(item.emi)}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '12px', display: 'block' }}>Interest Rate</span>
+                    <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>{item.interest_rate}% p.a.</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '12px', display: 'block' }}>Annual Interest</span>
+                    <strong style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>{currency(Math.round(item.outstanding * (item.interest_rate / 100)))}</strong>
+                  </div>
+                </div>
+
+                {/* In-Line Tailored Payoff Suggestion */}
+                <div className="recommendation" style={{ marginTop: '10px', fontSize: '13px' }}>
+                  <strong>Payoff Strategy:</strong> Increasing monthly EMI by <strong>{currency(extraEmiEstimate)}</strong> saves approx. <strong>{currency(interestSavingsEstimate)}</strong> in interest and cuts tenure by <strong>{monthsSavedEstimate} months</strong>.
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      ) : (
+        <Card>
+          <EmptyState 
+            title="No active debt obligations" 
+            detail="You are currently debt-free! If you want to track a home loan, car loan, education loan, or credit card liability, click 'Add Loan / Liability' above to monitor interest savings and accelerated payoff." 
+          />
+        </Card>
+      )}
 
       <QuickLinks links={[
         { to: '/simulator', icon: CircleDollarSign, label: 'Simulator', detail: 'Test new loan scenarios' },

@@ -148,7 +148,7 @@ export function Dashboard() {
                 setQuickLog((q) => ({ ...q, category: "Emergency Fund" }));
               }}
             >
-              🛡️ Savings & Investments
+              Savings & Investments
             </button>
             <button
               type="button"
@@ -158,7 +158,7 @@ export function Dashboard() {
                 setQuickLog((q) => ({ ...q, category: "Salary" }));
               }}
             >
-              💰 Income
+              Income
             </button>
           </div>
         </div>
@@ -188,13 +188,13 @@ export function Dashboard() {
               <select value={quickLog.category} onChange={(e) => setQuickLog({ ...quickLog, category: e.target.value })}>
                 {quickLogType === "savings" ? (
                   <optgroup label="Savings, Reserves & Investments">
-                    <option value="Emergency Fund">🛡️ Emergency Fund (Builds Runway & Reserve)</option>
-                    <option value="Fixed Deposit">🏦 Fixed Deposit (FD)</option>
-                    <option value="Mutual Funds">📈 Mutual Funds / SIP</option>
-                    <option value="Stocks">📊 Stocks & Direct Equity</option>
-                    <option value="Gold">🥇 Gold / Sovereign Gold Bonds</option>
-                    <option value="Provident Fund">🏛️ Provident Fund (PPF / EPF)</option>
-                    <option value="Extra Loan Repayment">💳 Extra Loan Principal Repayment</option>
+                    <option value="Emergency Fund">Emergency Fund (Builds Runway & Reserve)</option>
+                    <option value="Fixed Deposit">Fixed Deposit (FD)</option>
+                    <option value="Mutual Funds">Mutual Funds / SIP</option>
+                    <option value="Stocks">Stocks & Direct Equity</option>
+                    <option value="Gold">Gold / Sovereign Gold Bonds</option>
+                    <option value="Provident Fund">Provident Fund (PPF / EPF)</option>
+                    <option value="Extra Loan Repayment">Extra Loan Principal Repayment</option>
                   </optgroup>
                 ) : quickLogType === "income" ? (
                   <optgroup label="Income Inflows">
@@ -268,38 +268,40 @@ export function Dashboard() {
             <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "14px", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
                 <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-secondary)" }}>Needs (Fixed)</span>
-                <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{adaptive.actual_needs_pct}% / {adaptive.adaptive_needs_pct}%</strong>
+                <strong style={{ fontSize: "14px", color: adaptive.actual_needs_pct > adaptive.ideal_needs_pct ? "var(--accent-warning)" : "var(--text-primary)" }}>
+                  {adaptive.actual_needs_pct}% / {adaptive.ideal_needs_pct}%
+                </strong>
               </div>
-              <Progress value={(adaptive.actual_needs_pct / Math.max(adaptive.adaptive_needs_pct, 1)) * 100} tone={adaptive.actual_needs_pct <= adaptive.adaptive_needs_pct ? "success" : "warning"} />
+              <Progress value={(adaptive.actual_needs_pct / Math.max(adaptive.ideal_needs_pct, 1)) * 100} tone={adaptive.actual_needs_pct <= adaptive.ideal_needs_pct ? "success" : "warning"} />
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px", fontSize: "11px", color: "var(--text-muted)" }}>
                 <span>Spent: {currency(adaptive.needs_amount)}</span>
-                <span>Slab Target: {adaptive.ideal_needs_pct}%</span>
+                <span>Slab Target: {adaptive.ideal_needs_pct}%{adaptive.recommended_needs_amount ? ` (${currency(adaptive.recommended_needs_amount)})` : ""}</span>
               </div>
             </div>
 
             <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "14px", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
                 <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-secondary)" }}>Wants (Discretionary)</span>
-                <strong style={{ fontSize: "14px", color: adaptive.actual_wants_pct > adaptive.adaptive_wants_pct ? "var(--accent-warning)" : "var(--text-primary)" }}>
-                  {adaptive.actual_wants_pct}% / {adaptive.adaptive_wants_pct}%
+                <strong style={{ fontSize: "14px", color: adaptive.actual_wants_pct > adaptive.ideal_wants_pct ? "var(--accent-warning)" : "var(--text-primary)" }}>
+                  {adaptive.actual_wants_pct}% / {adaptive.ideal_wants_pct}%
                 </strong>
               </div>
-              <Progress value={(adaptive.actual_wants_pct / Math.max(adaptive.adaptive_wants_pct, 1)) * 100} tone={adaptive.actual_wants_pct <= adaptive.adaptive_wants_pct ? "success" : "warning"} />
+              <Progress value={(adaptive.actual_wants_pct / Math.max(adaptive.ideal_wants_pct, 1)) * 100} tone={adaptive.actual_wants_pct <= adaptive.ideal_wants_pct ? "success" : "warning"} />
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px", fontSize: "11px", color: "var(--text-muted)" }}>
                 <span>Spent: {currency(adaptive.wants_amount)}</span>
-                <span>Slab Target: {adaptive.ideal_wants_pct}%</span>
+                <span>Slab Target: {adaptive.ideal_wants_pct}%{adaptive.recommended_wants_amount ? ` (${currency(adaptive.recommended_wants_amount)})` : ""}</span>
               </div>
             </div>
 
             <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "14px", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
                 <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-secondary)" }}>Savings & Surplus</span>
-                <strong style={{ fontSize: "14px", color: "var(--accent-success)" }}>{adaptive.actual_savings_pct}% / {adaptive.adaptive_savings_pct}%</strong>
+                <strong style={{ fontSize: "14px", color: "var(--accent-success)" }}>{adaptive.actual_savings_pct}% / {adaptive.ideal_savings_pct}%</strong>
               </div>
-              <Progress value={(adaptive.actual_savings_pct / Math.max(adaptive.adaptive_savings_pct, 1)) * 100} tone="success" />
+              <Progress value={(adaptive.actual_savings_pct / Math.max(adaptive.ideal_savings_pct, 1)) * 100} tone="success" />
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px", fontSize: "11px", color: "var(--text-muted)" }}>
                 <span>Capacity: {currency(adaptive.savings_amount)}</span>
-                <span>Slab Target: {adaptive.ideal_savings_pct}%</span>
+                <span>Slab Target: {adaptive.ideal_savings_pct}%{adaptive.recommended_savings_amount ? ` (${currency(adaptive.recommended_savings_amount)})` : ""}</span>
               </div>
             </div>
           </div>

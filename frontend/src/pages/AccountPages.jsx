@@ -1,7 +1,8 @@
 import { Bell, Database, Eye, Info, LockKeyhole, Palette, RotateCcw, Save, ShieldCheck, UserRound, Volume2, Zap } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Badge, Button, Card, Field, MetricCard, NumberInput, PageHeader } from "../components/ui";
 import { useFinance } from "../context/FinanceContext";
+import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { currency } from "../lib/format";
 
@@ -93,10 +94,25 @@ function computeTierInfo(income, dependents = 0, incomeType = "Salaried") {
 
 
 export function Profile() {
+  const { user } = useAuth();
   const { profile, saveProfile } = useFinance();
-  const [draft, setDraft] = useState(profile);
+  const [draft, setDraft] = useState(() => ({
+    ...profile,
+    name: (user?.name && profile?.name === "Arjun Verma") ? user.name : (profile?.name || user?.name || "Client"),
+    email: (user?.email && profile?.email === "arjun.verma@example.com") ? user.email : (profile?.email || user?.email || ""),
+  }));
   const [saved, setSaved] = useState(false);
   const [showTierReason, setShowTierReason] = useState(false);
+
+  useEffect(() => {
+    if (profile) {
+      setDraft((current) => ({
+        ...profile,
+        name: (user?.name && profile?.name === "Arjun Verma") ? user.name : (profile?.name || current.name || user?.name || "Client"),
+        email: (user?.email && profile?.email === "arjun.verma@example.com") ? user.email : (profile?.email || current.email || user?.email || ""),
+      }));
+    }
+  }, [profile, user]);
 
   const tierInfo = computeTierInfo(draft.monthly_income, draft.dependents, draft.income_type);
 
