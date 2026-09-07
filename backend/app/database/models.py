@@ -20,13 +20,13 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
-    profile = relationship("FinancialProfile", back_populates="user", uselist=False)
-    transactions = relationship("Transaction", back_populates="user")
-    budgets = relationship("Budget", back_populates="user")
-    goals = relationship("Goal", back_populates="user")
-    investments = relationship("Investment", back_populates="user")
-    debts = relationship("Debt", back_populates="user")
-    recurring_transactions = relationship("RecurringTransaction", back_populates="user")
+    profile = relationship("FinancialProfile", back_populates="user", uselist=False, cascade="all, delete-orphan", passive_deletes=True)
+    transactions = relationship("Transaction", back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+    budgets = relationship("Budget", back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+    goals = relationship("Goal", back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+    investments = relationship("Investment", back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+    debts = relationship("Debt", back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+    recurring_transactions = relationship("RecurringTransaction", back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
 
 class FinancialProfile(Base):
     __tablename__ = "financial_profiles"

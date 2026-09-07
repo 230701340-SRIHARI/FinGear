@@ -791,7 +791,14 @@ export function Budget() {
       {/* 5-Tier Income & Budget Recommendation Card */}
       {tier.tier && (
         <Card glow style={{ marginBottom: "24px" }}>
-          <div className="section-title"><Sparkles /> Income Tier Benchmark: Tier {tier.tier} — {tier.name} ({tier.range})</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+            <div className="section-title"><Sparkles /> Income Tier Benchmark: Tier {tier.tier} — {tier.name} ({tier.range})</div>
+            {tier.lifestyle_badge && (
+              <Badge tone={tier.lifestyle_preference === "Frugal" ? "success" : tier.lifestyle_preference === "Experience-focused" ? "ai" : "info"}>
+                🌱 Lifestyle: {tier.lifestyle_badge}
+              </Badge>
+            )}
+          </div>
           <p className="muted" style={{ margin: "6px 0 16px" }}>{tier.details}</p>
           <div className="metric-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr", gap: "14px" }}>
             <div style={{ padding: "12px", background: "var(--surface-hover)", borderRadius: "8px" }}>
@@ -907,7 +914,13 @@ export function Budget() {
         </Card>
 
         <Card glow>
-          <div className="section-title"><ShieldAlert /> AI Budget Coach</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
+            <div className="section-title" style={{ margin: 0 }}><ShieldAlert /> AI Budget Coach</div>
+            <div style={{ display: "flex", gap: "6px" }}>
+              <Badge tone="info">Lifestyle: {budget.coach?.lifestyle || profile?.lifestyle_preference || 'Balanced'}</Badge>
+              {profile?.primary_financial_goal && <Badge tone="ai">Goal: {profile.primary_financial_goal}</Badge>}
+            </div>
+          </div>
           <p className="recommendation">{budget.coach?.message || "All tracked categories are within budget limits."}</p>
           <p className="muted" style={{ fontSize: "13px", lineHeight: "1.5" }}>
             Budgets sync directly with your live transaction ledger. Whenever you log an expense, the actual spending for that category updates immediately.
@@ -1352,17 +1365,83 @@ export function Goals() {
 
 export function Investments() {
   const { investments, forecast, profile } = useFinance();
+  const [allocView, setAllocView] = useState("current");
+  const riskProfile = investments.risk_profile || { appetite: profile?.risk_appetite || "Moderate" };
+
+  const displayedAllocation = allocView === "recommended" 
+    ? (investments.recommended_allocation || investments.allocation)
+    : investments.allocation;
+
   return (
     <>
-      <PageHeader eyebrow="Investments" title="Portfolio & Asset Overview" subtitle="Projection based on your tracked mutual funds, FDs, stocks, gold, and liquid emergency reserves." />
+      <PageHeader 
+        eyebrow="Investments & Wealth Compounding" 
+        title="Portfolio & Asset Overview" 
+        subtitle="Dynamic risk-calibrated asset allocations and rebalancing tailored to your risk appetite and primary goal." 
+        actions={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <Badge tone={riskProfile.appetite === "Aggressive" ? "ai" : riskProfile.appetite === "Conservative" ? "warning" : "info"}>
+              ⚡ Risk Appetite: {riskProfile.appetite}
+            </Badge>
+            {profile?.primary_financial_goal && (
+              <Badge tone="success">
+                🎯 Goal: {profile.primary_financial_goal}
+              </Badge>
+            )}
+          </div>
+        }
+      />
       <section className="metric-grid">
         <MetricCard icon={<WalletCards />} label="Total Investments" value={currency(investments.total)} detail="Asset portfolio" tone="success" />
         <MetricCard icon={<ShieldAlert />} label="Emergency Reserve" value={currency(profile?.emergency_fund || 0)} detail={`${((profile?.emergency_fund || 0) / Math.max(1, (profile?.emergency_target || 200000)) * 100).toFixed(0)}% of target`} tone="info" />
         <MetricCard icon={<TrendingUp />} label="Monthly Contribution" value={currency(investments.monthly_contribution)} detail="Recurring SIP" tone="info" />
-        <MetricCard icon={<Activity />} label="Estimated Return" value={`${investments.estimated_return || 8}%`} detail="Assumption only" tone="ai" />
+        <MetricCard icon={<Activity />} label="Estimated Return" value={`${investments.estimated_return || 11.5}% p.a.`} detail={`${riskProfile.appetite} risk posture`} tone="ai" />
       </section>
+
+      {/* Risk Strategy & Rebalancing Card */}
+      <Card glow style={{ marginBottom: "20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
+          <div>
+            <div className="section-title" style={{ marginBottom: "4px" }}><Sparkles /> Strategy: {riskProfile.strategy || "Balanced Growth & Managed Volatility"}</div>
+            <p className="muted" style={{ margin: "4px 0 10px", fontSize: "14px" }}>{riskProfile.description || "Maintains an optimal blend of growth assets and defensive ballast."}</p>
+          </div>
+          <Badge tone="ai" style={{ fontSize: "12px" }}>
+            {riskProfile.equity_target_pct ? `${riskProfile.equity_target_pct}% Growth / ${100 - riskProfile.equity_target_pct}% Defensive` : "Dynamic Target"}
+          </Badge>
+        </div>
+        {investments.rebalancing_advice && (
+          <div className="recommendation" style={{ marginTop: "10px" }}>
+            <strong>💡 AI Rebalancing Guidance:</strong> {investments.rebalancing_advice}
+          </div>
+        )}
+      </Card>
+
       <section className="grid-2">
-        <Card><div className="section-title">Asset allocation</div><AllocationChart data={investments.allocation} /></Card>
+        <Card>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
+            <div className="section-title" style={{ margin: 0 }}>Asset allocation</div>
+            <div style={{ display: "flex", gap: "6px" }}>
+              <Button 
+                variant={allocView === "current" ? "primary" : "secondary"} 
+                onClick={() => setAllocView("current")}
+                style={{ padding: "4px 8px", fontSize: "11px" }}
+              >
+                Current Portfolio
+              </Button>
+              <Button 
+                variant={allocView === "recommended" ? "primary" : "secondary"} 
+                onClick={() => setAllocView("recommended")}
+                style={{ padding: "4px 8px", fontSize: "11px" }}
+              >
+                Recommended Target ({riskProfile.appetite})
+              </Button>
+            </div>
+          </div>
+          <p className="muted" style={{ fontSize: "12px", marginBottom: "8px" }}>
+            {allocView === "current" ? "Actual distribution of your tracked holdings." : `Target optimal distribution for a ${riskProfile.appetite} investor.`}
+          </p>
+          <AllocationChart data={displayedAllocation} />
+        </Card>
         <Card><div className="section-title">Growth projection</div><NetWorthChart data={forecast.months} /></Card>
       </section>
       <Card>

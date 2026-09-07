@@ -131,7 +131,7 @@ class Transaction(BaseModel):
     date: str
     description: str
     category: str
-    type: str = Field(pattern="^(income|expense)$")
+    type: str = Field(default="expense", pattern="^(income|expense|savings|investment)$")
     amount: float = Field(gt=0)
     bill_url: str | None = None
     deleted_at: str | None = None

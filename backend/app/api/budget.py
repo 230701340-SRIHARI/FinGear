@@ -76,7 +76,7 @@ def get_budget(user_id: str = Depends(get_current_user_id)) -> dict:
 
     planned = sum(float(item.get("planned", 0.0)) for item in budgets)
     actual_total = sum(float(item.get("actual", 0.0)) for item in budgets)
-    tier_info = get_income_tier_info(profile.monthly_income)
+    tier_info = get_income_tier_info(profile.monthly_income, profile=profile)
     
     return {
         "income": profile.monthly_income,

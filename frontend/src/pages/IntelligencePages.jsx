@@ -277,7 +277,13 @@ export function Copilot() {
         eyebrow="AI workspace" 
         title="AI Financial Copilot" 
         subtitle="Answers use the current financial context and local ML calculations. It does not invent numbers." 
-        actions={<Badge tone="ai">🤖 LLM + ML Twin Active</Badge>}
+        actions={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <Badge tone="ai">🤖 LLM + ML Twin Active</Badge>
+            <Badge tone="info">🎯 {profile.primary_financial_goal || "Wealth Creation"}</Badge>
+            <Badge tone="success">⚡ {profile.risk_appetite || "Moderate"} Risk</Badge>
+          </div>
+        }
       />
       <section className="copilot-layout">
         <Card><div className="section-title"><MessageSquare /> Conversation history</div>{copilotContext.conversations?.length ? copilotContext.conversations.map((item) => <p key={item.id}>{item.question}</p>) : <p className="muted">No conversations yet.</p>}</Card>
@@ -285,7 +291,20 @@ export function Copilot() {
           <div className="message-list">{messages.length ? messages.map((message, index) => <div key={index} className={`message ${message.role}`}><Badge tone={message.role === "assistant" ? "ai" : "info"}>{message.source || message.role}</Badge><p>{message.text}</p></div>) : <EmptyState title="Ask a financial question" detail="Example: How can I optimize my monthly savings rate?" />}{thinking && <div className="message assistant thinking">AI is reading your profile and assumptions...</div>}</div>
           <form onSubmit={submit} className="copilot-input"><input value={question} onChange={(e) => setQuestion(e.target.value)} /><Button><Bot size={17} /> Ask</Button></form>
         </Card>
-        <Card><div className="section-title"><BrainCircuit /> Current profile context</div><div className="state-list"><span>Income: {currency(profile.monthly_income)}</span><span>Expenses: {currency(profile.monthly_expenses.reduce((s, i) => s + i.amount, 0))}</span><span>Savings: {currency(profile.savings_balance)}</span><span>Debt: {currency(profile.total_debt)}</span><span>Active goals: {profile.goals.length}</span><span>Forecast: Positive baseline</span></div></Card>
+        <Card>
+          <div className="section-title"><BrainCircuit /> Current profile context</div>
+          <div className="state-list">
+            <span>Income: {currency(profile.monthly_income)}</span>
+            <span>Expenses: {currency(profile.monthly_expenses.reduce((s, i) => s + i.amount, 0))}</span>
+            <span>Savings: {currency(profile.savings_balance)}</span>
+            <span>Debt: {currency(profile.total_debt)}</span>
+            <span>Active goals: {profile.goals.length}</span>
+            <span>🎯 Primary Goal: {profile.primary_financial_goal || "Wealth Creation"}</span>
+            <span>⚡ Risk Appetite: {profile.risk_appetite || "Moderate"}</span>
+            <span>🌱 Lifestyle: {profile.lifestyle_preference || "Balanced"}</span>
+            <span>🎓 Experience: {profile.financial_experience || "Beginner"}</span>
+          </div>
+        </Card>
       </section>
     </>
   );

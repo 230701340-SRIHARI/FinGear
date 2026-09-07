@@ -4,7 +4,7 @@ from app.core.security import get_current_user_id
 from app.ml.advanced_models import advanced_ml
 from app.repositories import memory
 from app.schemas.finance import FinancialProfile
-from app.services.financial_service import asset_allocation
+from app.services.financial_service import asset_allocation, compute_portfolio_strategy
 
 router = APIRouter(prefix="/investments", tags=["investments"])
 
@@ -73,11 +73,16 @@ def get_investments(user_id: str = Depends(get_current_user_id)) -> dict:
 
     total = sum(item["value"] for item in items)
     monthly = sum(item.get("monthly_contribution", 0) for item in items)
+    strategy_info = compute_portfolio_strategy(profile)
+
     return {
         "total": total,
         "monthly_contribution": monthly,
-        "estimated_return": round(advanced_ml.predict_investment_return(profile), 1),
+        "estimated_return": strategy_info["estimated_return"],
         "items": items,
-        "allocation": asset_allocation(profile),
-        "disclaimer": "Projection, not guaranteed return.",
+        "allocation": strategy_info["current_allocation"],
+        "recommended_allocation": strategy_info["recommended_allocation"],
+        "risk_profile": strategy_info["risk_profile"],
+        "rebalancing_advice": strategy_info["rebalancing_advice"],
+        "disclaimer": "Projection based on historical asset class risk-return profiles, not guaranteed return.",
     }

@@ -203,14 +203,116 @@ def build_dashboard(profile: FinancialProfile, transactions: list[dict], budgets
     }
 
 
-def asset_allocation(profile: FinancialProfile) -> list[dict]:
-    return [
-        {"name": "Mutual funds", "value": profile.mutual_funds or profile.investments_balance * 0.5},
-        {"name": "Stocks", "value": profile.stocks or profile.investments_balance * 0.3},
-        {"name": "FD/Debt", "value": profile.fixed_deposits or profile.investments_balance * 0.12},
-        {"name": "Gold", "value": profile.gold or profile.investments_balance * 0.08},
-        {"name": "Cash", "value": profile.savings_balance + profile.emergency_fund},
+def compute_portfolio_strategy(profile: FinancialProfile) -> dict:
+    """Compute current vs recommended asset allocations, returns, and rebalancing advice based on Risk Appetite and Goals."""
+    risk = (profile.risk_appetite or "Moderate").strip().title()
+    if risk not in ("Conservative", "Moderate", "Aggressive"):
+        risk = "Moderate"
+    goal = (profile.primary_financial_goal or "Wealth Creation").strip()
+    experience = (profile.financial_experience or "Beginner").strip()
+
+    # Current actual values
+    current_mf = float(profile.mutual_funds or (profile.investments_balance * 0.5))
+    current_stocks = float(profile.stocks or (profile.investments_balance * 0.3))
+    current_fd = float((profile.fixed_deposits + profile.provident_fund) or (profile.investments_balance * 0.12))
+    current_gold = float(profile.gold or (profile.investments_balance * 0.08))
+    current_cash = float(profile.savings_balance + profile.emergency_fund)
+
+    current_total = current_mf + current_stocks + current_fd + current_gold + current_cash
+    if current_total <= 0:
+        current_total = 100000.0
+        current_mf = 50000.0
+        current_stocks = 25000.0
+        current_fd = 15000.0
+        current_gold = 10000.0
+        current_cash = 0.0
+
+    current_allocation = [
+        {"name": "Mutual funds", "value": round(current_mf, 2), "pct": round(current_mf / current_total * 100, 1)},
+        {"name": "Stocks", "value": round(current_stocks, 2), "pct": round(current_stocks / current_total * 100, 1)},
+        {"name": "FD/Debt", "value": round(current_fd, 2), "pct": round(current_fd / current_total * 100, 1)},
+        {"name": "Gold", "value": round(current_gold, 2), "pct": round(current_gold / current_total * 100, 1)},
+        {"name": "Cash", "value": round(current_cash, 2), "pct": round(current_cash / current_total * 100, 1)},
     ]
+
+    # Target splits according to Risk Appetite
+    if risk == "Conservative":
+        target_mf_pct = 25.0
+        target_stocks_pct = 5.0
+        target_fd_pct = 45.0
+        target_gold_pct = 15.0
+        target_cash_pct = 10.0
+        target_return = 8.5
+        strategy = "Capital Preservation & Low Volatility"
+        strategy_desc = "Emphasizes fixed income, PPF, and physical/sovereign gold to protect downside capital while pacing with inflation."
+    elif risk == "Aggressive":
+        target_mf_pct = 50.0
+        target_stocks_pct = 35.0
+        target_fd_pct = 5.0
+        target_gold_pct = 5.0
+        target_cash_pct = 5.0
+        target_return = 14.2
+        strategy = "Maximum Equity Compounding & Growth"
+        strategy_desc = "High equity exposure (85% combined) engineered for multi-year compounding and maximum wealth expansion."
+    else:  # Moderate (default)
+        target_mf_pct = 45.0
+        target_stocks_pct = 25.0
+        target_fd_pct = 15.0
+        target_gold_pct = 10.0
+        target_cash_pct = 5.0
+        target_return = 11.5
+        strategy = "Balanced Growth & Managed Volatility"
+        strategy_desc = "Classic balanced posture maintaining 70% growth assets (Equity/MFs) balanced by 30% defensive ballast (Debt/Gold/Cash)."
+
+    recommended_allocation = [
+        {"name": "Mutual funds", "value": round(current_total * (target_mf_pct / 100.0), 2), "pct": target_mf_pct},
+        {"name": "Stocks", "value": round(current_total * (target_stocks_pct / 100.0), 2), "pct": target_stocks_pct},
+        {"name": "FD/Debt", "value": round(current_total * (target_fd_pct / 100.0), 2), "pct": target_fd_pct},
+        {"name": "Gold", "value": round(current_total * (target_gold_pct / 100.0), 2), "pct": target_gold_pct},
+        {"name": "Cash", "value": round(current_total * (target_cash_pct / 100.0), 2), "pct": target_cash_pct},
+    ]
+
+    # Rebalancing Advice logic
+    equity_current = (current_mf + current_stocks) / current_total * 100
+    equity_target = target_mf_pct + target_stocks_pct
+    delta_equity = round(equity_current - equity_target, 1)
+
+    if delta_equity < -8.0:
+        advice = (
+            f"Under your {risk} profile, target growth allocation is {equity_target:.0f}%, but your current portfolio holds {equity_current:.0f}%. "
+            f"You hold excess defensive/liquid assets. Step up monthly SIP allocations in diversified index funds to accelerate your {goal} target."
+        )
+    elif delta_equity > 8.0:
+        advice = (
+            f"Your current growth exposure ({equity_current:.0f}%) exceeds your {risk} target ({equity_target:.0f}%). "
+            f"Consider re-directing upcoming monthly surpluses into Fixed Deposits or Sovereign Gold Bonds to protect against downside corrections."
+        )
+    else:
+        advice = (
+            f"Your portfolio is well-balanced with your {risk} risk appetite ({equity_current:.0f}% actual vs {equity_target:.0f}% target equity). "
+            f"Maintain steady automated contributions toward your primary goal of {goal}."
+        )
+
+    return {
+        "current_allocation": current_allocation,
+        "recommended_allocation": recommended_allocation,
+        "estimated_return": target_return,
+        "risk_profile": {
+            "appetite": risk,
+            "strategy": strategy,
+            "description": strategy_desc,
+            "target_return": target_return,
+            "equity_target_pct": equity_target,
+            "debt_target_pct": target_fd_pct + target_cash_pct,
+            "gold_target_pct": target_gold_pct,
+        },
+        "rebalancing_advice": advice,
+    }
+
+
+def asset_allocation(profile: FinancialProfile) -> list[dict]:
+    """Returns current asset allocation list for backwards-compatible charts."""
+    return compute_portfolio_strategy(profile)["current_allocation"]
 
 
 def transaction_summary(transactions: list[dict]) -> dict:
@@ -232,13 +334,53 @@ def budget_coach(profile: FinancialProfile, budgets: list[dict]) -> dict:
     trend = advanced_ml.predict_expense_trend(profile)
     trend_msg = f" (ML projects expenses will be {trend:.1f}x normal based on current profile)." if trend > 1.05 or trend < 0.95 else ""
 
+    lifestyle = (profile.lifestyle_preference or "Balanced").strip()
+    experience = (profile.financial_experience or "Beginner").strip()
+    goal = (profile.primary_financial_goal or "Wealth Creation").strip()
+
     over = [item for item in budgets if item["actual"] > item["planned"]]
+    
     if not over:
-        return {"status": "healthy", "message": f"All tracked categories are within budget.{trend_msg}"}
+        if lifestyle == "Frugal":
+            coach_msg = f"All tracked categories are within budget. Your Frugal discipline is paying off—redirecting discretionary savings into your primary goal of {goal}."
+        elif lifestyle == "Experience-focused":
+            coach_msg = f"All tracked categories are within budget. You have healthy room for planned travel and lifestyle experiences while protecting essential needs."
+        else:
+            coach_msg = f"All tracked categories are within budget.{trend_msg} Your balanced budget structure is sustaining steady cash flow."
+        return {
+            "status": "healthy",
+            "message": coach_msg,
+            "lifestyle": lifestyle,
+            "goal": goal,
+            "experience": experience,
+        }
+
     largest = max(over, key=lambda item: item["actual"] - item["planned"])
+    over_amt = largest["actual"] - largest["planned"]
+    pct_over = round((over_amt / max(largest["planned"], 1)) * 100, 1)
+
+    if lifestyle == "Frugal":
+        advice = f"Frugal Alert: {largest['category']} exceeded limit by ₹{over_amt:,.0f} (+{pct_over}%). Trim non-essential expenses here to maintain your frugal savings rate and protect your {goal} milestone."
+    elif lifestyle == "Experience-focused":
+        advice = f"Experience Buffer Notice: {largest['category']} is ₹{over_amt:,.0f} above planned target. Double-check that essential living costs (Needs) and emergency reserves remain untouched before booking extra leisure."
+    else:
+        advice = f"You are trending ₹{over_amt:,.0f} above your {largest['category']} budget this month (+{pct_over}%).{trend_msg}"
+
+    # Experience-level tailoring
+    if experience == "Advanced":
+        opp_cost = round(over_amt * 12 * 0.12, 0)
+        advice += f" [Annualized 12% compounding opportunity cost: ~₹{opp_cost:,.0f}]."
+    elif experience == "Beginner":
+        advice += " Tip: Try setting a daily limit or moving surplus cash into your emergency reserve."
+
     return {
         "status": "attention",
-        "message": f"You are trending ₹{largest['actual'] - largest['planned']:,.0f} above your {largest['category']} budget this month.{trend_msg}",
+        "message": advice,
+        "category": largest["category"],
+        "over_amount": over_amt,
+        "lifestyle": lifestyle,
+        "goal": goal,
+        "experience": experience,
     }
 
 

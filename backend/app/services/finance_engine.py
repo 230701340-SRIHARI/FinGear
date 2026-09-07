@@ -36,31 +36,65 @@ from app.services.financial_health import (
 )
 
 
-def get_income_tier_info(income: float) -> dict:
+def get_income_tier_info(income: float, profile: FinancialProfile | None = None) -> dict:
     inc = float(income or 0.0)
     tier = get_tier_by_income(inc)
-    needs_amt = round(inc * (tier.needs_pct / 100.0), 2)
-    wants_amt = round(inc * (tier.wants_pct / 100.0), 2)
-    savings_amt = round(inc * (tier.savings_pct / 100.0), 2)
-    
-    # Risk-based emergency target (Survival has ₹25,000 floor)
-    emergency_target = tier.min_emergency if tier.tier == 1 else round(needs_amt * 3.0, 2)
+
+    needs_pct = float(tier.needs_pct)
+    wants_pct = float(tier.wants_pct)
+    savings_pct = float(tier.savings_pct)
+
+    lifestyle = (getattr(profile, "lifestyle_preference", None) or "Balanced").strip()
+    lifestyle_badge = "Balanced (Canonical)"
+
+    if lifestyle == "Frugal":
+        wants_pct = max(10.0, round(wants_pct - 6.0, 1))
+        savings_pct = round(100.0 - needs_pct - wants_pct, 1)
+        lifestyle_badge = "Frugal (-6% Wants, +6% Savings)"
+    elif lifestyle == "Experience-focused":
+        wants_pct = min(45.0, round(wants_pct + 6.0, 1))
+        savings_pct = max(10.0, round(100.0 - needs_pct - wants_pct, 1))
+        lifestyle_badge = "Experience-focused (+6% Wants)"
+
+    needs_amt = round(inc * (needs_pct / 100.0), 2)
+    wants_amt = round(inc * (wants_pct / 100.0), 2)
+    savings_amt = round(inc * (savings_pct / 100.0), 2)
+
+    # Risk & Goal-based emergency target calculation
+    risk = getattr(profile, "risk_appetite", "Moderate") or "Moderate"
+    goal = getattr(profile, "primary_financial_goal", "") or ""
+
+    if tier.tier == 1:
+        emergency_target = tier.min_emergency
+    else:
+        # Conservative users target 6 months; Aggressive 3 months; Moderate 4 months
+        months_target = 6.0 if risk == "Conservative" or goal == "Build Emergency Fund" else (3.0 if risk == "Aggressive" else 4.0)
+        emergency_target = round(needs_amt * months_target, 2)
+
     if tier.tier == 1 and emergency_target < 25_000:
         emergency_target = 25_000.0
+
+    focus_text = tier.focus
+    if goal:
+        focus_text += f" Target priority: Accelerating {goal}."
 
     return {
         "tier": tier.tier,
         "name": tier.name,
         "range": tier.income_range,
-        "needs_pct": tier.needs_pct,
-        "wants_pct": tier.wants_pct,
-        "savings_pct": tier.savings_pct,
+        "needs_pct": needs_pct,
+        "wants_pct": wants_pct,
+        "savings_pct": savings_pct,
         "needs_amount": needs_amt,
         "wants_amount": wants_amt,
         "savings_amount": savings_amt,
         "emergency_target": emergency_target,
-        "focus": tier.focus,
+        "focus": focus_text,
         "details": tier.description,
+        "lifestyle_preference": lifestyle,
+        "lifestyle_badge": lifestyle_badge,
+        "primary_financial_goal": goal,
+        "risk_appetite": risk,
     }
 
 
