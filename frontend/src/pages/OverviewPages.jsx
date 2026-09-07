@@ -4,14 +4,28 @@ import { Link } from "react-router-dom";
 import { AllocationChart, HealthTrendChart, IncomeExpenseChart, NetWorthChart } from "../components/charts";
 import { Badge, Button, Card, MetricCard, NumberInput, PageHeader, Progress, QuickLinks } from "../components/ui";
 import { useFinance } from "../context/FinanceContext";
+import { useAuth } from "../context/AuthContext";
 import { currency } from "../lib/format";
 
 export function Dashboard() {
-  const { dashboard, health, loading, aiForecast, aiAnomalies, addTransaction } = useFinance();
+  const { user } = useAuth();
+  const { dashboard, health, loading, aiForecast, aiAnomalies, addTransaction, profile } = useFinance();
   const kpis = dashboard?.kpis || [];
   const charts = dashboard?.charts || {};
   const forecastReady = aiForecast && aiForecast.status !== "learning";
   const adaptive = health?.adaptive_ratio || dashboard?.health?.adaptive_ratio;
+
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    let salutation = "Good morning";
+    if (hour >= 12 && hour < 17) {
+      salutation = "Good afternoon";
+    } else if (hour >= 17 || hour < 5) {
+      salutation = "Good evening";
+    }
+    const name = (user?.name || profile?.name || "").trim().split(" ")[0];
+    return name ? `${salutation}, ${name}` : salutation;
+  }, [user?.name, profile?.name]);
 
   const [quickLogType, setQuickLogType] = useState("expense"); // "expense" | "savings" | "income"
   const [quickLog, setQuickLog] = useState({ amount: "", description: "", category: "Food" });
@@ -65,7 +79,7 @@ export function Dashboard() {
     <>
       <PageHeader
         eyebrow="Executive overview"
-        title={dashboard?.greeting || "Good morning, Student"}
+        title={greeting}
         subtitle={dashboard?.status || "Your financial system is stable."}
         actions={<Link to="/simulator"><Button><Sparkles size={17} /> Open Decision Lab</Button></Link>}
       />

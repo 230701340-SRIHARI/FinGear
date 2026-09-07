@@ -11,16 +11,7 @@ function AuthShell({ children, title, subtitle }) {
       <section className="auth-hero">
         <div className="brand-line"><Landmark /> FinGear AI</div>
         <h1>{title}</h1>
-        <p>{subtitle}</p>
-        <div className="auth-loop">
-          <span>Real financial data</span>
-          <i />
-          <span>Financial Digital Twin</span>
-          <i />
-          <span>Simulated future</span>
-          <i />
-          <span>AI explanation</span>
-        </div>
+        {subtitle && <p>{subtitle}</p>}
       </section>
       <Card className="auth-card" glow>{children}</Card>
     </main>
@@ -59,7 +50,7 @@ export function Login() {
   }
 
   return (
-    <AuthShell title="Understand today. Predict tomorrow. Simulate before you decide." subtitle="A final-year AI financial intelligence platform built around a Financial Digital Twin.">
+    <AuthShell title="Understand today. Predict tomorrow. Simulate before you decide.">
       <div className="auth-icon"><BrainCircuit /></div>
       <h2>Sign in</h2>
       <p className="muted">Use your registered email and password to sign in, or create a new account.</p>

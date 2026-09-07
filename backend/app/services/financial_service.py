@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import datetime
 
 from app.schemas.finance import FinancialProfile, Scenario
 from app.services.finance_engine import forecast, goal_plan, health_score, monthly_cash_flow, simulate, total_expenses
@@ -212,8 +213,17 @@ def build_dashboard(profile: FinancialProfile, transactions: list[dict], budgets
             "expenses": round(m_exp, 2),
         })
 
+    hour = datetime.now().hour
+    if 5 <= hour < 12:
+        salutation = "Good morning"
+    elif 12 <= hour < 17:
+        salutation = "Good afternoon"
+    else:
+        salutation = "Good evening"
+    first_name = (profile.name or "Client").strip().split()[0] if profile.name else "Client"
+
     return {
-        "greeting": f"Good morning, {profile.name.split()[0]}",
+        "greeting": f"{salutation}, {first_name}",
         "status": "Your financial system is stable." if score["score"] >= 70 else "Your financial system needs attention.",
         "kpis": [
             {"label": "Net worth", "value": currency_compact(net_worth(profile)), "detail": "+8.4% projected", "tone": "success"},
