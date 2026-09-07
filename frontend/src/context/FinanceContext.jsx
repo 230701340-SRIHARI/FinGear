@@ -12,29 +12,15 @@ const initialData = {
   budget: { items: [], coach: {}, income: 0, planned: 0, actual: 0, remaining: 0 },
   health: null,
   forecast: { months: [], mode: "Baseline projection", assumptions: {}, metrics: {} },
-  goals: { goals: demoProfile.goals, analysis: [] },
+  goals: { goals: [], analysis: [] },
   investments: { items: [], allocation: [], total: 0, monthly_contribution: 0 },
   debt: { items: [], total: 0, monthly_emi: 0, debt_to_income: 0 },
-  insights: { insights: [
-    {"severity": "success", "title": "Savings rate improved", "reason": "Current savings rate is 32%.", "impact": "More goal capacity", "action": "Keep automated savings active."},
-    {"severity": "warning", "title": "Emergency fund below target", "reason": "Runway is 3.1 months.", "impact": "Reduced shock absorption", "action": "Prioritize emergency savings."},
-    {"severity": "info", "title": "Investment consistency detected", "reason": "Monthly contributions are stable.", "impact": "Better long-term compounding", "action": "Review allocation quarterly."}
-  ]},
-  timeline: { events: [
-    {"period": "This Month", "title": "Started car fund", "value": "₹12,000", "type": "Goal Creation"},
-    {"period": "Last Month", "title": "Increased SIP", "value": "₹5,000", "type": "Investment"}
-  ]},
-  reports: { reports: [
-    {"name": "Monthly Financial Report", "status": "Ready", "summary": "Income, expenses, cash flow and score breakdown."},
-    {"name": "Financial Health Report", "status": "Ready", "summary": "Explainable component-level health assessment."},
-    {"name": "Forecast Report", "status": "Ready", "summary": "Baseline projection using current behavior assumptions."},
-    {"name": "PDF Export", "status": "Planned", "summary": "Export is documented as future work."}
-  ]},
+  insights: { insights: [] },
+  timeline: { events: [] },
+  reports: { reports: [] },
   settings: null,
   security: null,
-  scenarioHistory: { history: [
-    {"id": "1", "name": "Increase salary and SIP", "date": "Oct 12", "result": "Net worth +12%", "score": "+4"}
-  ]},
+  scenarioHistory: { history: [] },
   copilotContext: { conversations: [] },
   aiStatus: null,
   aiForecast: null,
@@ -73,22 +59,22 @@ export function FinanceProvider({ children }) {
         aiForecast,
         aiAnomalies,
       ] = await Promise.all([
-        api.profile(),
-        api.dashboard(),
-        api.transactions(),
-        api.budget(),
-        api.health(),
-        api.forecast(24),
-        api.goals(),
-        api.investments(),
-        api.debt(),
-        api.insights(),
-        api.timeline(),
-        api.reports(),
-        api.settings(),
-        api.security(),
-        api.simulationHistory(),
-        api.copilotContext(),
+        api.profile().catch(() => demoProfile),
+        api.dashboard().catch(() => null),
+        api.transactions().catch(() => ({ transactions: [], summary: { income: 0, expenses: 0, net: 0 } })),
+        api.budget().catch(() => ({ items: [], coach: {}, income: 0, planned: 0, actual: 0, remaining: 0 })),
+        api.health().catch(() => null),
+        api.forecast(24).catch(() => ({ months: [], mode: "Baseline projection", assumptions: {}, metrics: {} })),
+        api.goals().catch(() => ({ goals: [], analysis: [] })),
+        api.investments().catch(() => ({ items: [], allocation: [], total: 0, monthly_contribution: 0 })),
+        api.debt().catch(() => ({ items: [], total: 0, monthly_emi: 0, debt_to_income: 0 })),
+        api.insights().catch(() => ({ insights: [] })),
+        api.timeline().catch(() => ({ events: [] })),
+        api.reports().catch(() => ({ reports: [] })),
+        api.settings().catch(() => null),
+        api.security().catch(() => null),
+        api.simulationHistory().catch(() => ({ history: [] })),
+        api.copilotContext().catch(() => ({ conversations: [] })),
         api.ai.status().catch(() => null),
         api.ai.forecast().catch(() => null),
         api.ai.anomalies().catch(() => ({ anomalies: [], count: 0 })),
@@ -114,8 +100,14 @@ export function FinanceProvider({ children }) {
         aiForecast,
         aiAnomalies,
       });
-    } catch {
-      setError("Backend unavailable. Local sample data remains visible.");
+    } catch (err) {
+      console.error("Finance refresh error:", err);
+      const msg = String(err?.message || err).toLowerCase();
+      if (msg.includes("401") || msg.includes("unauthorized") || msg.includes("token")) {
+        setError("Session expired or unauthorized. Please log in again.");
+      } else {
+        setError("Backend unavailable. Local sample data remains visible.");
+      }
       setData((current) => ({ ...current, profile: current.profile || demoProfile }));
     } finally {
       setLoading(false);
@@ -165,6 +157,18 @@ export function FinanceProvider({ children }) {
     return created;
   }
 
+  async function updateGoal(goalName, goal) {
+    setError("");
+    const updated = await api.updateGoal(goalName, goal);
+    setData((current) => ({
+      ...current,
+      goals: { goals: updated.goals, analysis: updated.analysis },
+      profile: { ...current.profile, goals: updated.goals },
+    }));
+    await refresh();
+    return updated;
+  }
+
   async function deleteGoal(goalName) {
     setError("");
     try {
@@ -212,6 +216,16 @@ export function FinanceProvider({ children }) {
     }
   }
 
+  async function excludeAnomaly(txnId) {
+    setError("");
+    try {
+      await api.ai.exclude(txnId);
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not exclude anomaly.");
+    }
+  }
+
   async function resetAI() {
     setError("");
     try {
@@ -222,12 +236,69 @@ export function FinanceProvider({ children }) {
     }
   }
 
+  async function restoreTransaction(id) {
+    setError("");
+    try {
+      await api.restoreTransaction(id);
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not restore this transaction.");
+    }
+  }
+
+  async function updateIncomeSuite(amount, applyToAllMonths) {
+    setError("");
+    try {
+      await api.updateIncomeSuite({ amount, apply_to_all_months: applyToAllMonths });
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not update income suite.");
+    }
+  }
+
+  async function uploadBill(file) {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api.uploadBill(formData);
+  }
+
+  async function fetchDeletedTransactions() {
+    try {
+      const res = await api.deletedTransactions();
+      return res.deleted_transactions || [];
+    } catch {
+      return [];
+    }
+  }
+
   useEffect(() => {
     refresh();
   }, [token]);
 
   const value = useMemo(
-    () => ({ ...data, loading, error, refresh, saveProfile, addTransaction, deleteTransaction, deleteSimulation, addGoal, deleteGoal, fetchForecast, runSimulation, askCopilot, acknowledgeAnomaly, resetAI }),
+    () => ({
+      ...data,
+      loading,
+      error,
+      refresh,
+      saveProfile,
+      addTransaction,
+      deleteTransaction,
+      restoreTransaction,
+      updateIncomeSuite,
+      uploadBill,
+      fetchDeletedTransactions,
+      deleteSimulation,
+      addGoal,
+      updateGoal,
+      deleteGoal,
+      fetchForecast,
+      runSimulation,
+      askCopilot,
+      acknowledgeAnomaly,
+      excludeAnomaly,
+      resetAI,
+    }),
     [data, loading, error]
   );
 

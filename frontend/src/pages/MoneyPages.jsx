@@ -1,7 +1,8 @@
-import { Activity, Calendar, CircleDollarSign, CreditCard, Goal as GoalIcon, Landmark, LineChart, MoreVertical, Pencil, Plus, ShieldAlert, SlidersHorizontal, Trash2, TrendingDown, TrendingUp, WalletCards } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Activity, Calendar, Check, CheckCircle2, CircleDollarSign, CreditCard, FileText, FileUp, Goal as GoalIcon, HelpCircle, Landmark, LineChart, MoreVertical, Pencil, Play, Plus, PlusCircle, RefreshCw, RotateCcw, ShieldAlert, SlidersHorizontal, Sparkles, Trash, Trash2, TrendingDown, TrendingUp, UploadCloud, WalletCards } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { AllocationChart, NetWorthChart } from "../components/charts";
-import { Badge, Button, Card, ConfirmModal, EmptyState, Field, MetricCard, PageHeader, Progress, QuickLinks } from "../components/ui";
+import { Badge, Button, Card, ConfirmModal, EmptyState, Field, MetricCard, NumberInput, PageHeader, Progress, QuickLinks } from "../components/ui";
 import { useFinance } from "../context/FinanceContext";
 import { currency, percent } from "../lib/format";
 
@@ -11,92 +12,444 @@ function defaultTargetDate() {
   return date.toISOString().slice(0, 10);
 }
 
+const NEEDS_SET = new Set([
+  "Housing", "Rent", "Groceries", "Utilities", "Healthcare", "Medicines",
+  "Insurance", "Insurance Premium", "Education", "Transport", "Fuel", "Mandatory EMI", "EMI", "Bills"
+]);
+const SAVINGS_SET = new Set([
+  "Investment", "Savings", "Emergency Fund", "FD", "Fixed Deposit",
+  "SIP", "Mutual Funds", "Stocks", "PPF", "NPS", "Retirement",
+  "Extra Loan Repayment", "Extra Debt Prepayment"
+]);
+
+function getCategoryTag(category, type) {
+  if (type === "income") return { label: "Income", tone: "success" };
+  if (SAVINGS_SET.has(category)) return { label: "Savings", tone: "success" };
+  if (NEEDS_SET.has(category)) return { label: "Need", tone: "info" };
+  return { label: "Want", tone: "warning" };
+}
+
+
 export function Transactions() {
-  const { transactions, addTransaction, deleteTransaction, acknowledgeAnomaly } = useFinance();
+  const { transactions, addTransaction, deleteTransaction, restoreTransaction, updateIncomeSuite, uploadBill, fetchDeletedTransactions, acknowledgeAnomaly, excludeAnomaly } = useFinance();
+  
+  const [activeTab, setActiveTab] = useState("active"); // "active" | "deleted"
   const [showForm, setShowForm] = useState(false);
   const [query, setQuery] = useState("");
   const [deletingId, setDeletingId] = useState(null);
-  const [form, setForm] = useState({ amount: 1000, type: "expense", category: "Food", date: "2026-08-20", description: "" });
-  const rows = transactions.transactions.filter((txn) => `${txn.description} ${txn.category}`.toLowerCase().includes(query.toLowerCase()));
+  
+  // Deleted transactions list
+  const [deletedList, setDeletedList] = useState([]);
+  const [loadingDeleted, setLoadingDeleted] = useState(false);
 
-  async function submit(event) {
+  // Bill upload state
+  const [fileUploading, setFileUploading] = useState(false);
+  const [attachedBill, setAttachedBill] = useState(null); // { url, name }
+
+  // Income Suite Modals State
+  const [incomePromptOpen, setIncomePromptOpen] = useState(false);
+  const [pendingIncomeForm, setPendingIncomeForm] = useState(null);
+
+  // Form State
+  const [form, setForm] = useState({
+    amount: 1500,
+    type: "expense",
+    category: "Food",
+    date: new Date().toISOString().slice(0, 10),
+    description: "",
+  });
+
+  const activeRows = useMemo(() => {
+    return (transactions.transactions || []).filter((txn) =>
+      `${txn.description || ""} ${txn.category || ""}`.toLowerCase().includes(query.toLowerCase())
+    );
+  }, [transactions.transactions, query]);
+
+  const deletedRows = useMemo(() => {
+    return deletedList.filter((txn) =>
+      `${txn.description || ""} ${txn.category || ""}`.toLowerCase().includes(query.toLowerCase())
+    );
+  }, [deletedList, query]);
+
+  const loadDeleted = async () => {
+    setLoadingDeleted(true);
+    const items = await fetchDeletedTransactions();
+    setDeletedList(items);
+    setLoadingDeleted(false);
+  };
+
+  useEffect(() => {
+    if (activeTab === "deleted") {
+      loadDeleted();
+    }
+  }, [activeTab]);
+
+  async function handleFileUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setFileUploading(true);
+    try {
+      const res = await uploadBill(file);
+      setAttachedBill({ url: res.bill_url, name: res.filename || file.name });
+    } catch (err) {
+      alert("Failed to upload file: " + err.message);
+    } finally {
+      setFileUploading(false);
+    }
+  }
+
+  async function handleSubmit(event) {
     event.preventDefault();
-    await addTransaction(form);
+    const payload = {
+      ...form,
+      amount: Number(form.amount),
+      bill_url: attachedBill ? attachedBill.url : null,
+    };
+
+    if (form.type === "income") {
+      setPendingIncomeForm(payload);
+      setShowForm(false);
+      setIncomePromptOpen(true);
+    } else {
+      await addTransaction(payload);
+      resetForm();
+    }
+  }
+
+  function resetForm() {
+    setForm({
+      amount: 1500,
+      type: "expense",
+      category: "Food",
+      date: new Date().toISOString().slice(0, 10),
+      description: "",
+    });
+    setAttachedBill(null);
     setShowForm(false);
+    setIncomePromptOpen(false);
+    setPendingIncomeForm(null);
+  }
+
+  async function handleIncomeChoice(addToSuite, applyToAllMonths) {
+    if (!pendingIncomeForm) return;
+    
+    // Save transaction first
+    await addTransaction(pendingIncomeForm);
+    
+    // Update profile monthly income suite if requested
+    if (addToSuite) {
+      await updateIncomeSuite(pendingIncomeForm.amount, applyToAllMonths);
+    }
+    
+    resetForm();
   }
 
   async function handleDeleteConfirm() {
     if (deletingId) {
       await deleteTransaction(deletingId);
       setDeletingId(null);
+      if (activeTab === "deleted") {
+        loadDeleted();
+      }
     }
+  }
+
+  async function handleRestore(txnId) {
+    await restoreTransaction(txnId);
+    await loadDeleted();
   }
 
   return (
     <>
-      <PageHeader eyebrow="Transactions" title="Financial transaction management" subtitle="Search, filter and review income and expense flows." actions={<Button onClick={() => setShowForm(true)}><Plus size={17} /> Add Transaction</Button>} />
-      <section className="metric-grid">
-        <MetricCard icon={<Landmark />} label="Income" value={currency(transactions.summary.income)} detail="This month" tone="success" />
-        <MetricCard icon={<CreditCard />} label="Expenses" value={currency(transactions.summary.expenses)} detail="This month" tone="warning" />
-        <MetricCard icon={<Activity />} label="Net" value={currency(transactions.summary.net)} detail="Income minus expenses" tone="info" />
-      </section>
-      <Card>
-        <div className="table-toolbar"><input placeholder="Search transactions..." value={query} onChange={(event) => setQuery(event.target.value)} /><Badge tone="info">{rows.length} records</Badge></div>
-        {rows.length ? (
-          <div className="data-table">
-            {rows.map((txn) => (
-              <article key={txn.id} className={txn.anomaly_flag ? "anomaly-row" : ""}>
-                <span>{txn.date}</span>
-                <strong>{txn.description}</strong>
-                <span>{txn.category}</span>
-                <Badge tone={txn.type === "income" ? "success" : "warning"}>{txn.type}</Badge>
-                <b>{currency(txn.amount)}</b>
-                {txn.anomaly_flag && (
-                  <Badge tone="danger" title={`Anomaly score: ${((txn.anomaly_score || 0) * 100).toFixed(1)}%`}>⚠ Anomaly</Badge>
-                )}
-                {txn.anomaly_flag && !txn.acknowledged && (
-                  <button
-                    className="icon-button"
-                    style={{ color: "var(--accent-success)", fontSize: "12px" }}
-                    title="Acknowledge — This is normal spending"
-                    onClick={() => acknowledgeAnomaly(txn.id)}
-                  >
-                    ✓ OK
-                  </button>
-                )}
-                <button
-                  className="icon-button"
-                  style={{ color: "var(--accent-danger)" }}
-                  title="Delete Transaction"
-                  onClick={() => setDeletingId(txn.id)}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </article>
-            ))}
+      <PageHeader
+        eyebrow="Transactions & Expense Tracker"
+        title="Financial Transaction Management"
+        subtitle="Manual expense inputs, PDF bill attachments, 60-day recovery trash bin, income suite updates & multi-phase anomaly detection."
+        actions={
+          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            <Badge tone="ai">🤖 ML Anomaly Ensemble Active</Badge>
+            <Button onClick={() => setShowForm(true)}>
+              <Plus size={17} /> Add Transaction
+            </Button>
           </div>
-        ) : (
-          <EmptyState title="No transactions yet" detail="Add income or expense records to power your financial twin." />
-        )}
-      </Card>
+        }
+      />
 
+      <section className="metric-grid">
+        <MetricCard icon={<Landmark />} label="Total Income" value={currency(transactions.summary.income)} detail="Tracked credit flows" tone="success" />
+        <MetricCard icon={<CreditCard />} label="Total Expenses" value={currency(transactions.summary.expenses)} detail="Tracked debit flows" tone="warning" />
+        <MetricCard icon={<Activity />} label="Net Monthly Surplus" value={currency(transactions.summary.net)} detail="Income minus expenses" tone="info" />
+      </section>
+
+      {/* Tabs for Active vs Deleted */}
+      <div className="tab-buttons" style={{ display: "flex", gap: "12px", marginBottom: "16px" }}>
+        <button
+          className={`btn ${activeTab === "active" ? "btn-primary" : "btn-ghost"}`}
+          onClick={() => setActiveTab("active")}
+        >
+          <CreditCard size={16} /> Active Transactions ({transactions.transactions?.length || 0})
+        </button>
+        <button
+          className={`btn ${activeTab === "deleted" ? "btn-primary" : "btn-ghost"}`}
+          onClick={() => setActiveTab("deleted")}
+        >
+          <RotateCcw size={16} /> Trash Bin (60-Day Recovery) ({deletedList.length})
+        </button>
+      </div>
+
+      {activeTab === "active" ? (
+        <Card>
+          <div className="table-toolbar">
+            <input
+              placeholder="Search by description or category..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <Badge tone="info">{activeRows.length} records</Badge>
+          </div>
+
+          {activeRows.length ? (
+            <div className="data-table">
+              {activeRows.map((txn) => (
+                <article key={txn.id} className={txn.anomaly_flag ? "anomaly-row" : ""}>
+                  <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>{txn.date}</span>
+                  <div>
+                    <strong>{txn.description}</strong>
+                    {txn.bill_url && (
+                      <a
+                        href={txn.bill_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ display: "inline-flex", alignItems: "center", gap: "4px", marginLeft: "10px", fontSize: "12px", color: "var(--accent)" }}
+                      >
+                        <FileText size={13} /> Bill attached
+                      </a>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>{txn.category}</span>
+                    <Badge tone={getCategoryTag(txn.category, txn.type).tone}>
+                      {getCategoryTag(txn.category, txn.type).label}
+                    </Badge>
+                  </div>
+                  <Badge tone={txn.type === "income" ? "success" : "warning"}>{txn.type}</Badge>
+                  <b>{currency(txn.amount)}</b>
+
+                  {/* Anomaly Badge & Action Controls */}
+                  {txn.anomaly_flag && (
+                    <Badge tone="danger" title={`Anomaly Score: ${((txn.anomaly_score || 0) * 100).toFixed(1)}%`}>
+                      ⚠ Anomaly
+                    </Badge>
+                  )}
+
+                  {txn.anomaly_flag && !txn.acknowledged ? (
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <button
+                        className="icon-button"
+                        style={{ color: "var(--accent-success)", border: "1px solid var(--accent-success)", borderRadius: "50%", width: "28px", height: "28px", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                        title="Verify as Normal Transaction (Trains Model with this Data)"
+                        onClick={() => acknowledgeAnomaly(txn.id)}
+                      >
+                        ✓
+                      </button>
+                      <button
+                        className="icon-button"
+                        style={{ color: "#f59e0b", border: "1px solid #f59e0b", borderRadius: "50%", width: "28px", height: "28px", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                        title="Exclude from Model Training (Keeps in ledger, ignores for ML)"
+                        onClick={() => excludeAnomaly(txn.id)}
+                      >
+                        ⊘
+                      </button>
+                      <button
+                        className="icon-button"
+                        style={{ color: "var(--accent-danger)", border: "1px solid var(--accent-danger)", borderRadius: "50%", width: "28px", height: "28px", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                        title="Remove Transaction (Prevents Model Pollution)"
+                        onClick={() => setDeletingId(txn.id)}
+                      >
+                        <Trash size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      className="icon-button"
+                      style={{ color: "var(--accent-danger)" }}
+                      title="Delete Transaction"
+                      onClick={() => setDeletingId(txn.id)}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="No active transactions" detail="Use the Add Transaction button to log your income and expenses." />
+          )}
+        </Card>
+      ) : (
+        /* Trash Bin 60-Day Window Tab */
+        <Card>
+          <div className="table-toolbar">
+            <input
+              placeholder="Search deleted transactions..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <Badge tone="warning">60-Day Auto-Purge Window</Badge>
+          </div>
+
+          {loadingDeleted ? (
+            <p className="muted" style={{ padding: "16px" }}>Loading deleted transactions...</p>
+          ) : deletedRows.length ? (
+            <div className="data-table">
+              {deletedRows.map((txn) => (
+                <article key={txn.id} style={{ opacity: 0.85 }}>
+                  <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                    Deleted: {txn.deleted_at ? new Date(txn.deleted_at).toLocaleDateString() : "Recently"}
+                  </span>
+                  <strong>{txn.description}</strong>
+                  <span>{txn.category}</span>
+                  <Badge tone={txn.type === "income" ? "success" : "warning"}>{txn.type}</Badge>
+                  <b>{currency(txn.amount)}</b>
+                  <Button
+                    variant="secondary"
+                    style={{ padding: "4px 10px", fontSize: "12px" }}
+                    onClick={() => handleRestore(txn.id)}
+                  >
+                    <RotateCcw size={13} /> Restore
+                  </Button>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="Trash bin empty" detail="No transactions have been deleted in the last 60 days." />
+          )}
+        </Card>
+      )}
+
+      {/* Form Modal: Add Transaction with PDF Upload */}
       {showForm && (
         <Card className="modal-card">
-          <form className="form-grid" onSubmit={submit}>
-            <Field label="Amount"><input type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: Number(e.target.value) })} /></Field>
-            <Field label="Type"><select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}><option>expense</option><option>income</option></select></Field>
-            <Field label="Category"><select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>{["Housing","Food","Transport","Utilities","Shopping","Healthcare","Education","Entertainment","Investment","Debt","Other"].map((item) => <option key={item}>{item}</option>)}</select></Field>
-            <Field label="Date"><input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
-            <Field label="Description"><input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required /></Field>
-            <div className="form-actions"><Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button><Button type="submit">Save</Button></div>
+          <div className="section-title"><PlusCircle /> Add Transaction Record</div>
+          <form className="form-grid" onSubmit={handleSubmit}>
+            <Field label="Amount (₹)">
+              <NumberInput min="1" value={form.amount} onChange={(val) => setForm({ ...form, amount: val })} required />
+            </Field>
+
+            <Field label="Type">
+              <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+                <option value="expense">Expense</option>
+                <option value="income">Income</option>
+              </select>
+            </Field>
+
+            <Field label="Category (Mutually Exclusive Buckets)">
+              <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                {form.type === "income" ? (
+                  <optgroup label="Income Sources">
+                    <option value="Salary">Salary</option>
+                    <option value="Freelance">Freelance Payment</option>
+                    <option value="Business">Business Income</option>
+                    <option value="Rent Received">Rent Received</option>
+                    <option value="Interest">Interest</option>
+                    <option value="Bonus">Bonus</option>
+                    <option value="Income">General Income</option>
+                  </optgroup>
+                ) : (
+                  <>
+                    <optgroup label="Needs (Fixed & Essential Outflows)">
+                      <option value="Groceries">Groceries</option>
+                      <option value="Rent">Rent / Housing</option>
+                      <option value="Utilities">Utilities & Bills</option>
+                      <option value="Transport">Fuel / Public Transport</option>
+                      <option value="Healthcare">Healthcare & Medicines</option>
+                      <option value="Insurance">Insurance Premium</option>
+                      <option value="Education">Education & Tuition</option>
+                      <option value="Mandatory EMI">Mandatory Loan EMI</option>
+                    </optgroup>
+                    <optgroup label="Wants (Discretionary Spending)">
+                      <option value="Dining">Dining Out & Delivery</option>
+                      <option value="Shopping">Shopping & Fashion</option>
+                      <option value="Entertainment">Entertainment & OTT</option>
+                      <option value="Travel">Travel & Hobbies</option>
+                      <option value="Lifestyle">Lifestyle & Upgrades</option>
+                      <option value="Other">Other Want</option>
+                    </optgroup>
+                    <optgroup label="Savings / Wealth Building">
+                      <option value="SIP">Mutual Funds / SIP</option>
+                      <option value="Savings">Emergency Fund / FD</option>
+                      <option value="Investment">Stocks / PPF / NPS</option>
+                      <option value="Extra Loan Repayment">Extra Loan Principal Payment</option>
+                    </optgroup>
+                  </>
+                )}
+              </select>
+            </Field>
+
+            <Field label="Date">
+              <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
+            </Field>
+
+            <Field label="Description">
+              <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="e.g. D-Mart Groceries, Salary..." required />
+            </Field>
+
+            {/* File Upload for Bill / Receipt */}
+            <Field label="Attach Bill / Receipt (PDF or Image)">
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <input type="file" accept="application/pdf,image/*" onChange={handleFileUpload} disabled={fileUploading} />
+                {fileUploading && <span style={{ fontSize: "12px", color: "var(--accent)" }}>Uploading...</span>}
+              </div>
+              {attachedBill && (
+                <div style={{ fontSize: "12px", color: "var(--accent-success)", marginTop: "4px" }}>
+                  ✓ {attachedBill.name} attached successfully!
+                </div>
+              )}
+            </Field>
+
+            <div className="form-actions form-wide">
+              <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
+              <Button type="submit">Save Transaction</Button>
+            </div>
           </form>
         </Card>
       )}
 
+      {/* Income Suite Interactive Prompts */}
+      {incomePromptOpen && pendingIncomeForm && (
+        <Card className="modal-card" glow>
+          <div className="section-title"><Sparkles /> Income Suite Update</div>
+          <p style={{ margin: "12px 0 20px" }}>
+            You entered an income transaction of <strong>{currency(pendingIncomeForm.amount)}</strong> ({pendingIncomeForm.description}).
+          </p>
+          <p style={{ fontWeight: 600, fontSize: "15px", color: "var(--text-primary)" }}>
+            Do you want to add this to the monthly income suite?
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "16px" }}>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  const applyAll = window.confirm("Add to ALL future months? Click OK for 'All Months', or Cancel for 'Present Month Only'.");
+                  handleIncomeChoice(true, applyAll);
+                }}
+              >
+                Yes, Add to Monthly Income Suite
+              </Button>
+
+              <Button variant="secondary" onClick={() => handleIncomeChoice(false, false)}>
+                No, Record Only as Single Transaction
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Delete Confirmation Modal */}
       <ConfirmModal
         isOpen={Boolean(deletingId)}
         title="Delete Transaction"
-        message="Are you sure you want to delete this transaction record?"
+        message="Are you sure you want to delete this transaction record? It will be moved to the 60-day recovery trash bin."
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeletingId(null)}
       />
@@ -106,23 +459,63 @@ export function Transactions() {
 
 export function Budget() {
   const { budget } = useFinance();
+  const tier = budget.tier_info || {};
+
   return (
     <>
-      <PageHeader eyebrow="Budget" title="Monthly budget control" subtitle="Planned vs actual category spending with AI coaching." />
+      <PageHeader eyebrow="Budget" title="Monthly Budget Control & Tier Benchmarks" subtitle="Planned vs actual category spending benchmarked against your income tier." />
       <section className="metric-grid">
-        <MetricCard icon={<Landmark />} label="Income" value={currency(budget.income)} detail="Monthly" tone="success" />
-        <MetricCard icon={<SlidersHorizontal />} label="Planned expenses" value={currency(budget.planned)} detail="Budgeted" tone="info" />
-        <MetricCard icon={<WalletCards />} label="Remaining" value={currency(budget.remaining)} detail="After planned expenses" tone="ai" />
+        <MetricCard icon={<Landmark />} label="Monthly Income" value={currency(budget.income)} detail={`Tier ${tier.tier || 1}: ${tier.name || 'Baseline'}`} tone="success" />
+        <MetricCard icon={<SlidersHorizontal />} label="Planned Expenses" value={currency(budget.planned)} detail="Budgeted total" tone="info" />
+        <MetricCard icon={<WalletCards />} label="Remaining Surplus" value={currency(budget.remaining)} detail="After planned expenses" tone="ai" />
       </section>
+
+      {/* 5-Tier Income & Budget Recommendation Card */}
+      {tier.tier && (
+        <Card glow style={{ marginBottom: "24px" }}>
+          <div className="section-title"><Sparkles /> Income Tier Benchmark: Tier {tier.tier} — {tier.name} ({tier.range})</div>
+          <p className="muted" style={{ margin: "6px 0 16px" }}>{tier.details}</p>
+          <div className="metric-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr", gap: "14px" }}>
+            <div style={{ padding: "12px", background: "var(--surface-hover)", borderRadius: "8px" }}>
+              <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block" }}>Needs Target ({tier.needs_pct}%)</span>
+              <strong style={{ fontSize: "18px", color: "var(--text-primary)" }}>{currency(tier.needs_amount)}</strong>
+            </div>
+            <div style={{ padding: "12px", background: "var(--surface-hover)", borderRadius: "8px" }}>
+              <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block" }}>Wants Target ({tier.wants_pct}%)</span>
+              <strong style={{ fontSize: "18px", color: "var(--accent)" }}>{currency(tier.wants_amount)}</strong>
+            </div>
+            <div style={{ padding: "12px", background: "var(--surface-hover)", borderRadius: "8px" }}>
+              <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block" }}>Savings Target ({tier.savings_pct}%)</span>
+              <strong style={{ fontSize: "18px", color: "var(--accent-success)" }}>{currency(tier.savings_amount)}</strong>
+            </div>
+          </div>
+          <div className="recommendation" style={{ marginTop: "14px" }}>
+            <strong>Strategic Focus:</strong> {tier.focus}
+          </div>
+        </Card>
+      )}
+
       <section className="grid-2">
         <Card>
-          <div className="section-title"><SlidersHorizontal /> Category budgets</div>
+          <div className="section-title"><SlidersHorizontal /> Category Budgets</div>
           <div className="budget-list">{budget.items.map((item) => {
             const value = item.planned ? (item.actual / item.planned) * 100 : 0;
-            return <article key={item.category}><div><strong>{item.category}</strong><span>{currency(item.actual)} / {currency(item.planned)}</span></div><Progress value={value} tone={value > 100 ? "danger" : "success"} /></article>;
+            const tag = getCategoryTag(item.category, "expense");
+            return (
+              <article key={item.category}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <strong>{item.category}</strong>
+                    <Badge tone={tag.tone}>{tag.label}</Badge>
+                  </div>
+                  <span>{currency(item.actual)} / {currency(item.planned)}</span>
+                </div>
+                <Progress value={value} tone={value > 100 ? "danger" : "success"} />
+              </article>
+            );
           })}</div>
         </Card>
-        <Card glow><div className="section-title"><ShieldAlert /> AI Budget Coach</div><p className="recommendation">{budget.coach?.message}</p><p className="muted">Budget editing is available in the architecture; persistence uses the demo repository until PostgreSQL is connected.</p></Card>
+        <Card glow><div className="section-title"><ShieldAlert /> AI Budget Coach</div><p className="recommendation">{budget.coach?.message}</p><p className="muted">Budget editing is available in the architecture; changes dynamically sync across all intelligence components.</p></Card>
       </section>
       <QuickLinks links={[
         { to: '/transactions', icon: Landmark, label: 'Transactions', detail: 'See actual spending data' },
@@ -134,10 +527,12 @@ export function Budget() {
 }
 
 export function Goals() {
-  const { goals, addGoal, deleteGoal } = useFinance();
+  const navigate = useNavigate();
+  const { goals, addGoal, updateGoal, deleteGoal } = useFinance();
   const [showForm, setShowForm] = useState(false);
   const [activeMenuGoal, setActiveMenuGoal] = useState(null);
   const [deletingGoalName, setDeletingGoalName] = useState(null);
+  const [editingGoalName, setEditingGoalName] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const [form, setForm] = useState({
@@ -177,11 +572,19 @@ export function Goals() {
     setSaving(true);
     setFormError("");
     try {
-      await addGoal({
-        ...form,
-        name: form.name.trim(),
-      });
+      if (editingGoalName) {
+        await updateGoal(editingGoalName, {
+          ...form,
+          name: form.name.trim(),
+        });
+      } else {
+        await addGoal({
+          ...form,
+          name: form.name.trim(),
+        });
+      }
       setShowForm(false);
+      setEditingGoalName(null);
       setForm({
         name: "",
         target_amount: 100000,
@@ -206,7 +609,7 @@ export function Goals() {
 
   return (
     <>
-      <PageHeader eyebrow="Goals" title="Goal planning system" subtitle="Probability, gap analysis and action options for each financial goal." actions={<Button onClick={() => { setForm({ name: "", target_amount: 100000, current_amount: 0, monthly_contribution: 5000, target_date: defaultTargetDate(), goal_type: "Custom" }); setShowForm(true); }}><Plus size={17} /> Create Goal</Button>} />
+      <PageHeader eyebrow="Goals" title="Goal planning system" subtitle="Probability, gap analysis and action options for each financial goal." actions={<Button onClick={() => { setForm({ name: "", target_amount: 100000, current_amount: 0, monthly_contribution: 5000, target_date: defaultTargetDate(), goal_type: "Custom" }); setEditingGoalName(null); setShowForm(true); }}><Plus size={17} /> Create Goal</Button>} />
       <section className="goal-planner-grid">
         {goals.analysis.length ? goals.analysis.map((goal) => (
           <Card key={goal.name} style={{ position: "relative" }}>
@@ -225,6 +628,7 @@ export function Goals() {
                     className="dropdown-item"
                     onClick={() => {
                       setForm(goal);
+                      setEditingGoalName(goal.name);
                       setShowForm(true);
                       setActiveMenuGoal(null);
                     }}
@@ -258,14 +662,26 @@ export function Goals() {
               <span><strong>Target:</strong> {currency(goal.target_amount)}</span>
               <span><strong>Current:</strong> {currency(goal.current_amount)}</span>
               <span><strong>Monthly saving:</strong> {currency(goal.monthly_contribution)}</span>
+              <span><strong>Expected completion:</strong> {goal.expected_months ? `${goal.expected_months} months` : "N/A"}</span>
               <span><strong>Gap:</strong> {currency(Math.max(goal.target_amount - goal.current_amount, 0))}</span>
             </div>
 
-            <div className="option-grid">
-              <span>Option A: increase savings by {currency(Math.max(goal.required_monthly - goal.available_monthly, 0))}/mo</span>
-              <span>Option B: extend deadline</span>
-              <span>Option C: reduce target amount</span>
-            </div>
+            {goal.achievement_probability < 70 && (
+              <div className="option-grid">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Option A: Aggressive Savings (Increase SIP by {currency(goal.required_monthly - goal.planned_monthly)}/mo)</span>
+                  <Button variant="ghost" onClick={() => navigate('/simulator', { state: { target_goal_name: goal.name, scenario: { name: `Fund ${goal.name}`, scenario_type: "Increase SIP", extra_monthly_investment: goal.required_monthly - goal.planned_monthly, income_change: 0, expense_change: 0, new_monthly_loan_payment: 0 } } })}><Play size={14} /> Simulate</Button>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Option B: Expense Diet (Cut spending by {currency(goal.required_monthly - goal.planned_monthly)}/mo)</span>
+                  <Button variant="ghost" onClick={() => navigate('/simulator', { state: { target_goal_name: goal.name, scenario: { name: `Cut expenses for ${goal.name}`, scenario_type: "Reduce Spending", expense_change: -(goal.required_monthly - goal.planned_monthly), income_change: 0, extra_monthly_investment: 0, new_monthly_loan_payment: 0 } } })}><Play size={14} /> Simulate</Button>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Option C: Side Hustle (Increase income by {currency(goal.required_monthly - goal.planned_monthly)}/mo)</span>
+                  <Button variant="ghost" onClick={() => navigate('/simulator', { state: { target_goal_name: goal.name, scenario: { name: `Increase income for ${goal.name}`, scenario_type: "Salary Change", income_change: goal.required_monthly - goal.planned_monthly, expense_change: 0, extra_monthly_investment: 0, new_monthly_loan_payment: 0 } } })}><Play size={14} /> Simulate</Button>
+                </div>
+              </div>
+            )}
           </Card>
         )) : <EmptyState title="No financial goals yet" detail="Create a goal to calculate feasibility." />}
       </section>
@@ -275,12 +691,12 @@ export function Goals() {
           <form className="form-grid" onSubmit={submit}>
             <Field label="Goal name"><input value={form.name} onChange={(event) => update("name", event.target.value)} placeholder="Emergency fund, Bike, MBA..." required /></Field>
             <Field label="Goal type"><select value={form.goal_type} onChange={(event) => update("goal_type", event.target.value)}>{["Custom","Emergency","Education","Vehicle","Home","Travel","Investment","Retirement"].map((item) => <option key={item}>{item}</option>)}</select></Field>
-            <Field label="Target amount"><input type="number" min="1" value={form.target_amount} onChange={(event) => update("target_amount", Number(event.target.value))} required /></Field>
-            <Field label="Current amount"><input type="number" min="0" value={form.current_amount} onChange={(event) => update("current_amount", Number(event.target.value))} required /></Field>
-            <Field label="Monthly contribution"><input type="number" min="0" value={form.monthly_contribution} onChange={(event) => update("monthly_contribution", Number(event.target.value))} required /></Field>
+            <Field label="Target amount"><NumberInput min="1" value={form.target_amount} onChange={(val) => update("target_amount", val)} required /></Field>
+            <Field label="Current amount"><NumberInput min="0" value={form.current_amount} onChange={(val) => update("current_amount", val)} required /></Field>
+            <Field label="Monthly contribution"><NumberInput min="0" value={form.monthly_contribution} onChange={(val) => update("monthly_contribution", val)} required /></Field>
             <Field label="Target date"><input type="date" value={form.target_date} onInput={(event) => update("target_date", event.currentTarget.value)} onChange={(event) => update("target_date", event.currentTarget.value)} required /></Field>
             {formError && <div className="inline-error form-wide">{formError}</div>}
-            <div className="form-actions form-wide"><Button type="button" variant="ghost" onClick={() => setShowForm(false)} disabled={saving}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Creating..." : "Save Goal"}</Button></div>
+            <div className="form-actions form-wide"><Button type="button" variant="ghost" onClick={() => { setShowForm(false); setEditingGoalName(null); }} disabled={saving}>Cancel</Button><Button type="submit" disabled={saving}>{saving ? "Saving..." : editingGoalName ? "Update Goal" : "Save Goal"}</Button></div>
           </form>
         </Card>
       )}

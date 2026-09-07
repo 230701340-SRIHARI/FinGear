@@ -71,6 +71,16 @@ def ai_acknowledge(txn_id: str, user_id: str = Depends(get_current_user_id)) -> 
     return ai_engine.acknowledge_anomaly(user_id, txn)
 
 
+@router.post("/anomalies/{txn_id}/exclude")
+def ai_exclude(txn_id: str, user_id: str = Depends(get_current_user_id)) -> dict:
+    """
+    Human-in-the-loop: exclude transaction from anomaly model training.
+    Keeps transaction in financial ledger, but ignores it for future anomaly training.
+    """
+    memory.exclude_transaction_from_training(user_id, txn_id)
+    return {"excluded": True, "message": "Transaction excluded from model training."}
+
+
 @router.get("/weights")
 def ai_weights(user_id: str = Depends(get_current_user_id)) -> dict:
     """Current serialized weight state for debugging and transparency."""

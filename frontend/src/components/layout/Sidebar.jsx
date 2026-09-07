@@ -37,6 +37,7 @@ const groups = [
     label: "Overview",
     items: [
       { to: "/dashboard", label: "Dashboard", icon: Gauge },
+      { to: "/transactions", label: "Transactions", icon: ReceiptText },
       { to: "/financial-twin", label: "Financial Twin", icon: BrainCircuit },
       { to: "/my-money", label: "My Money", icon: WalletMinimal },
     ],
@@ -71,7 +72,6 @@ const groups = [
     items: [
       { to: "/reports", label: "Reports", icon: FileText },
       { to: "/timeline", label: "Financial Timeline", icon: CalendarClock },
-      { to: "/transactions", label: "Transactions", icon: ReceiptText },
     ],
   },
   {

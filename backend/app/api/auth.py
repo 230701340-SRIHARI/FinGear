@@ -108,17 +108,22 @@ def _exchange_google_code(code: str, redirect_uri: str) -> dict:
 
 @router.post("/register", response_model=AuthResponse)
 def register(payload: UserCreate) -> AuthResponse:
-    if memory.find_user_by_email(payload.email):
+    email = payload.email.strip().lower()
+    name = payload.name.strip()
+    password = payload.password.strip()
+    if memory.find_user_by_email(email):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
-    user = memory.create_user(payload.name, payload.email, payload.password)
+    user = memory.create_user(name, email, password)
     return AuthResponse(access_token=create_access_token(user["id"]), user=memory.public_user(user))
 
 
 @router.post("/login", response_model=AuthResponse)
 def login(payload: UserLogin) -> AuthResponse:
-    user = memory.find_user_by_email(payload.email)
-    if not user or not verify_password(payload.password, user["password_hash"]):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    email = payload.email.strip().lower()
+    password = payload.password.strip()
+    user = memory.find_user_by_email(email)
+    if not user or not verify_password(password, user["password_hash"]):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
     return AuthResponse(access_token=create_access_token(user["id"]), user=memory.public_user(user))
 
 

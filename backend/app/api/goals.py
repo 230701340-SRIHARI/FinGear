@@ -34,6 +34,27 @@ def create_goal(goal: GoalCreate, user_id: str = Depends(get_current_user_id)) -
     return {"created_goal": created_goal, "goals": profile.goals, "analysis": goal_plan(profile)}
 
 
+@router.put("/{goal_name}")
+def update_goal(goal_name: str, goal: GoalCreate, user_id: str = Depends(get_current_user_id)) -> dict:
+    target_date = _parse_target_date(goal.target_date)
+    if target_date <= date.today():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Target date must be in the future.")
+    if goal.current_amount > goal.target_amount:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Current amount cannot exceed target amount.")
+
+    target_months = _months_until(target_date)
+    goal_payload = goal.model_dump()
+    goal_payload["target_date"] = target_date.isoformat()
+    goal_payload["target_months"] = target_months
+    stored_goal = Goal(**goal_payload).model_dump()
+    try:
+        updated_goal = memory.update_goal(user_id, goal_name, stored_goal)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    profile = FinancialProfile(**memory.state_copy(user_id)["profile"])
+    return {"updated_goal": updated_goal, "goals": profile.goals, "analysis": goal_plan(profile)}
+
+
 @router.delete("/{goal_name}")
 def delete_goal(goal_name: str, user_id: str = Depends(get_current_user_id)) -> dict:
     memory.delete_goal(user_id, goal_name)

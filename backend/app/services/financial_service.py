@@ -27,13 +27,145 @@ def emergency_runway(profile: FinancialProfile) -> float:
     return profile.emergency_fund / max(total_expenses(profile) + profile.monthly_debt_payment, 1)
 
 
+def generate_ai_brief(
+    profile: FinancialProfile,
+    transactions: list[dict],
+    budgets: list[dict],
+    goals: list[dict],
+    score_data: dict,
+    cash_flow: float,
+) -> dict:
+    income = profile.monthly_income + profile.other_income
+    positive = []
+    attention = []
+
+    if income <= 0:
+        return {
+            "confidence": 50,
+            "positive": ["Profile initialized and tracking active"],
+            "attention": ["Income profile not yet configured"],
+            "recommendation": "Add your monthly income in the Profile tab to unlock personalized AI budget ratios and cash flow insights.",
+        }
+
+    savings_rate = score_data.get("savings_rate", 0.0)
+    adaptive_info = score_data.get("adaptive_ratio") or {}
+    target_savings = (adaptive_info.get("adaptive_savings_pct") or 20) / 100.0
+
+    if savings_rate >= target_savings and savings_rate > 0:
+        positive.append(f"Savings rate is strong ({savings_rate:.0%} vs {target_savings:.0%} target)")
+    elif savings_rate > 0.15:
+        positive.append(f"Healthy monthly surplus generated ({savings_rate:.0%})")
+
+    dti = debt_to_income(profile)
+    if profile.total_debt == 0:
+        positive.append("Zero debt liabilities: 100% debt-free")
+    elif dti < 0.20:
+        positive.append(f"Debt burden is low ({dti:.0%} of monthly income)")
+    elif dti > 0.35:
+        attention.append(f"Debt payments absorb {dti:.0%} of income (safe ceiling: 30%)")
+
+    runway = emergency_runway(profile)
+    if runway >= 5.5:
+        positive.append(f"Emergency reserve is solid ({runway:.1f} months of runway)")
+    elif runway < 2.0 and income > 0:
+        attention.append(f"Emergency fund covers only {runway:.1f} months of expenses")
+    elif runway < 4.0 and income > 0:
+        attention.append(f"Emergency reserve ({runway:.1f} months) is below the 6-month safety benchmark")
+
+    total_invested = profile.investments_balance + profile.mutual_funds + profile.stocks + profile.fixed_deposits + profile.gold
+    if total_invested > 0:
+        positive.append(f"Active investment portfolio of {currency_compact(total_invested)}")
+
+    # Strictly evaluate real goals explicitly created by the user with positive target amount
+    valid_goals = [g for g in profile.goals if getattr(g, 'name', None) and getattr(g, 'target_amount', 0) > 0]
+    if valid_goals and goals:
+        valid_projections = [g for g in goals if g.get("name") and g.get("target_amount", 0) > 0]
+        underfunded_goals = [g for g in valid_projections if g.get("achievement_probability", 100) < 65]
+        on_track_goals = [g for g in valid_projections if g.get("achievement_probability", 100) >= 65]
+        if underfunded_goals:
+            for ug in underfunded_goals[:2]:
+                attention.append(f"Goal '{ug['name']}' requires higher monthly allocation to meet target date")
+        elif on_track_goals:
+            positive.append(f"{len(on_track_goals)} financial goal(s) on track for planned completion")
+
+    # Strictly evaluate real active budgets
+    valid_budgets = [b for b in budgets if b.get("planned", 0) > 0 and b.get("category")]
+    if valid_budgets:
+        over_budgets = [b for b in valid_budgets if b.get("actual", 0) > b.get("planned", 0)]
+        for ob in over_budgets[:2]:
+            attention.append(f"{ob['category']} spending ({currency_compact(ob['actual'])}) exceeded budgeted {currency_compact(ob['planned'])}")
+
+    if adaptive_info.get("is_adapted"):
+        attention.append(f"Discretionary spending ({adaptive_info.get('actual_wants_pct', 0):.0f}%) exceeds slab target; stepping plan active")
+
+    if not positive:
+        if cash_flow > 0:
+            positive.append(f"Positive monthly cash flow surplus of {currency_compact(cash_flow)}")
+        elif transactions:
+            positive.append(f"{len(transactions)} transaction(s) tracked in financial ledger")
+        else:
+            positive.append("Financial profile established; cash flow baseline ready")
+
+    if not attention:
+        attention.append("No high-risk cash flow or debt anomalies detected")
+
+    # Add any active risk flags to attention items
+    for flag in score_data.get("risk_flags", []):
+        attention.insert(0, f"Risk Alert: {flag['label']} — {flag['message']}")
+
+    if cash_flow < 0:
+        rec = f"Monthly expenses exceed income by {currency_compact(abs(cash_flow))}. Reduce non-essential spending to restore surplus."
+    elif score_data.get("suggestions"):
+        rec = score_data["suggestions"][0]
+    elif runway < 3.0 and income > 0:
+        gap = max(0, (total_expenses(profile) * 3) - profile.emergency_fund)
+        rec = f"Build liquid emergency reserve toward at least 3 months ({currency_compact(gap)} needed to reach 3-month buffer)."
+    elif dti > 0.35:
+        rec = "Focus surplus cash flow on paying down high-interest debt before expanding discretionary investments."
+    elif adaptive_info.get("is_adapted"):
+        rec = adaptive_info.get("adaptation_message", "Follow stepping guidelines to optimize discretionary spending.")
+    elif valid_goals:
+        rec = "Surplus cash flow is healthy. Ensure monthly SIPs and goal allocations remain automated."
+    else:
+        rec = "Your financial baseline is stable. Consider setting specific long-term goals in the Goals tab."
+
+    # Use canonical data confidence if available
+    if "data_confidence" in score_data:
+        confidence = score_data["data_confidence"]["score"]
+    elif not transactions:
+        confidence = 68
+    else:
+        confidence = min(92, 70 + len(transactions) * 2)
+
+    return {
+        "confidence": confidence,
+        "positive": positive[:3],
+        "attention": attention[:3],
+        "recommendation": rec,
+    }
+
+
 def build_dashboard(profile: FinancialProfile, transactions: list[dict], budgets: list[dict]) -> dict:
-    score = health_score(profile)
+    score = health_score(profile, transactions=transactions, budgets=budgets)
+
     projected = forecast(profile, 24)["months"]
     goals = goal_plan(profile)
     monthly_expenses = total_expenses(profile)
     income = profile.monthly_income + profile.other_income
     cash_flow = monthly_cash_flow(profile)
+    valid_goals = [g for g in profile.goals if getattr(g, 'name', None) and getattr(g, 'target_amount', 0) > 0]
+
+    from datetime import date
+    today = date.today()
+    month_labels = []
+    for offset in range(4, -1, -1):
+        m = today.month - offset
+        y = today.year
+        while m <= 0:
+            m += 12
+            y -= 1
+        month_labels.append(date(y, m, 1).strftime("%b"))
+
     return {
         "greeting": f"Good morning, {profile.name.split()[0]}",
         "status": "Your financial system is stable." if score["score"] >= 70 else "Your financial system needs attention.",
@@ -43,30 +175,25 @@ def build_dashboard(profile: FinancialProfile, transactions: list[dict], budgets
             {"label": "Savings rate", "value": f"{score['savings_rate']:.0%}", "detail": "Excellent" if score["savings_rate"] >= 0.25 else "Needs work", "tone": "success"},
             {"label": "Debt burden", "value": f"{debt_to_income(profile):.0%}", "detail": "Low risk" if debt_to_income(profile) < 0.2 else "Monitor", "tone": "success"},
             {"label": "Emergency runway", "value": f"{emergency_runway(profile):.1f} months", "detail": "Target is 6 months", "tone": "warning"},
-            {"label": "Goal progress", "value": f"{len(profile.goals)} active", "detail": f"{sum(1 for goal in goals if goal['achievement_probability'] < 70)} at risk", "tone": "ai"},
+            {"label": "Goal progress", "value": f"{len(valid_goals)} active", "detail": f"{sum(1 for goal in goals if goal['achievement_probability'] < 70)} at risk" if valid_goals else "No active goals", "tone": "ai" if valid_goals else "info"},
         ],
-        "ai_brief": {
-            "confidence": 84,
-            "positive": ["Savings rate is strong", "Debt burden remains low", "Investment contributions are consistent"],
-            "attention": ["Emergency fund is below ideal target", "Food spending is above budget", "Car goal is currently underfunded"],
-            "recommendation": "Increase emergency savings by ₹8,000/month for the next 4 months before increasing discretionary investments.",
-        },
+        "ai_brief": generate_ai_brief(profile, transactions, budgets, goals, score, cash_flow),
         "charts": {
             "net_worth": projected,
             "income_expense": [
-                {"month": "Apr", "income": income, "expenses": monthly_expenses * 0.92},
-                {"month": "May", "income": income, "expenses": monthly_expenses * 0.95},
-                {"month": "Jun", "income": income, "expenses": monthly_expenses * 1.02},
-                {"month": "Jul", "income": income, "expenses": monthly_expenses * 0.98},
-                {"month": "Aug", "income": income, "expenses": monthly_expenses},
+                {"month": month_labels[0], "income": income, "expenses": round(monthly_expenses * 0.92, 2)},
+                {"month": month_labels[1], "income": income, "expenses": round(monthly_expenses * 0.95, 2)},
+                {"month": month_labels[2], "income": income, "expenses": round(monthly_expenses * 1.02, 2)},
+                {"month": month_labels[3], "income": income, "expenses": round(monthly_expenses * 0.98, 2)},
+                {"month": month_labels[4], "income": income, "expenses": round(monthly_expenses, 2)},
             ],
             "asset_allocation": asset_allocation(profile),
             "health_trend": [
-                {"month": "Apr", "score": max(score["score"] - 7, 0)},
-                {"month": "May", "score": max(score["score"] - 4, 0)},
-                {"month": "Jun", "score": max(score["score"] - 2, 0)},
-                {"month": "Jul", "score": max(score["score"] - 1, 0)},
-                {"month": "Aug", "score": score["score"]},
+                {"month": month_labels[0], "score": max(score["score"] - 6, 0)},
+                {"month": month_labels[1], "score": max(score["score"] - 4, 0)},
+                {"month": month_labels[2], "score": max(score["score"] - 2, 0)},
+                {"month": month_labels[3], "score": max(score["score"] - 1, 0)},
+                {"month": month_labels[4], "score": score["score"]},
             ],
         },
         "transactions": transactions[:5],
@@ -117,10 +244,12 @@ def budget_coach(profile: FinancialProfile, budgets: list[dict]) -> dict:
 
 def build_insights(profile: FinancialProfile, budgets: list[dict]) -> list[dict]:
     score = health_score(profile)
+    invested = profile.investments_balance + profile.mutual_funds + profile.stocks + profile.fixed_deposits + profile.gold
+    inv_reason = "Investment balance and portfolio allocation remain active." if invested > 0 else "Ready to track investment portfolios once added."
     insights = [
         {"severity": "success", "title": "Savings rate improved", "reason": f"Current savings rate is {score['savings_rate']:.0%}.", "impact": "More goal capacity", "action": "Keep automated savings active."},
         {"severity": "warning", "title": "Emergency fund below target", "reason": f"Runway is {emergency_runway(profile):.1f} months.", "impact": "Reduced shock absorption", "action": "Prioritize emergency savings."},
-        {"severity": "info", "title": "Investment consistency detected", "reason": "Monthly contributions are stable in demo data.", "impact": "Better long-term compounding", "action": "Review allocation quarterly."},
+        {"severity": "info", "title": "Investment monitoring active", "reason": inv_reason, "impact": "Better long-term compounding", "action": "Review allocation quarterly."},
     ]
     coach = budget_coach(profile, budgets)
     if coach["status"] == "attention":

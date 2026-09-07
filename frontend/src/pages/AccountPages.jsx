@@ -1,14 +1,102 @@
 import { Bell, Database, Eye, LockKeyhole, Palette, RotateCcw, Save, ShieldCheck, UserRound, Volume2, Zap } from "lucide-react";
 import { useState } from "react";
-import { Badge, Button, Card, Field, MetricCard, PageHeader } from "../components/ui";
+import { Badge, Button, Card, Field, MetricCard, NumberInput, PageHeader } from "../components/ui";
 import { useFinance } from "../context/FinanceContext";
 import { useTheme } from "../context/ThemeContext";
 import { currency } from "../lib/format";
+
+function computeTierInfo(income, dependents = 0, incomeType = "Salaried") {
+  const inc = Number(income) || 0;
+  const dep = Number(dependents) || 0;
+  const isVolatile = /business|freelance|self/i.test(incomeType);
+  const riskMonths = isVolatile ? 6 : dep > 2 ? 5 : dep > 0 ? 4 : 3;
+
+  if (inc < 30000) {
+    const needsAmt = inc * 0.65;
+    return {
+      tier: 1,
+      name: "Survival (₹15,000 – ₹30,000)",
+      needs_pct: 65,
+      wants_pct: 15,
+      savings_pct: 20,
+      needs_amount: needsAmt,
+      wants_amount: inc * 0.15,
+      savings_amount: inc * 0.20,
+      emergency_target: Math.max(25000, needsAmt * riskMonths),
+      focus: "Prioritize building a ₹25,000 emergency fund in a liquid savings account before any market investing.",
+      description: "Fixed living costs dominate income. Focus on basics and building the initial ₹25,000 emergency buffer."
+    };
+  } else if (inc < 50000) {
+    const needsAmt = inc * 0.50;
+    return {
+      tier: 2,
+      name: "Baseline (₹30,000 – ₹50,000)",
+      needs_pct: 50,
+      wants_pct: 30,
+      savings_pct: 20,
+      needs_amount: needsAmt,
+      wants_amount: inc * 0.30,
+      savings_amount: inc * 0.20,
+      emergency_target: needsAmt * riskMonths,
+      focus: "Move past cash savings and start long-term wealth building via Equity Mutual Fund SIPs and Public Provident Fund (PPF).",
+      description: "Classic 50:30:20 budgeting fits perfectly. Covers standard living costs with room for lifestyle and consistent investing."
+    };
+  } else if (inc < 80000) {
+    const needsAmt = inc * 0.45;
+    return {
+      tier: 3,
+      name: "Accumulation (₹50,000 – ₹80,000)",
+      needs_pct: 45,
+      wants_pct: 25,
+      savings_pct: 30,
+      needs_amount: needsAmt,
+      wants_amount: inc * 0.25,
+      savings_amount: inc * 0.30,
+      emergency_target: needsAmt * riskMonths,
+      focus: "Aggressively scale your investments between Equity Mutual Funds (ELSS for tax saving) and liquid funds.",
+      description: "Basic needs don't double with income. Squeeze needs down to 45% and scale savings to 30% to accelerate wealth generation."
+    };
+  } else if (inc < 125000) {
+    const needsAmt = inc * 0.40;
+    return {
+      tier: 4,
+      name: "Reverse Budget (₹80,000 – ₹1,25,000)",
+      needs_pct: 40,
+      wants_pct: 20,
+      savings_pct: 40,
+      needs_amount: needsAmt,
+      wants_amount: inc * 0.20,
+      savings_amount: inc * 0.40,
+      emergency_target: needsAmt * riskMonths,
+      focus: "Invest 40% first before discretionary spending. Compound in direct equity, diversified mutual funds, and retirement corpus.",
+      description: "Avoid lifestyle inflation by prioritizing savings first. Compounding assets grow before upgrading lifestyle."
+    };
+  } else {
+    const needsAmt = inc * 0.35;
+    return {
+      tier: 5,
+      name: "Wealth Building (₹1,25,000+)",
+      needs_pct: 35,
+      wants_pct: 15,
+      savings_pct: 50,
+      needs_amount: needsAmt,
+      wants_amount: inc * 0.15,
+      savings_amount: inc * 0.50,
+      emergency_target: needsAmt * riskMonths,
+      focus: "Optimize for maximum tax efficiency and multi-asset allocation (International funds, debt instruments, large-cap equities).",
+      description: "Savings rate is dominant category (50%+). Comfortably supports FIRE and large-scale financial freedom."
+    };
+  }
+}
+
 
 export function Profile() {
   const { profile, saveProfile } = useFinance();
   const [draft, setDraft] = useState(profile);
   const [saved, setSaved] = useState(false);
+
+  const tierInfo = computeTierInfo(draft.monthly_income, draft.dependents, draft.income_type);
+
 
   async function submit(event) {
     event.preventDefault();
@@ -28,42 +116,167 @@ export function Profile() {
 
   return (
     <>
-      <PageHeader eyebrow="Profile" title="Financial Identity" subtitle="Manage income, recurring expenses, and total balances." />
+      <PageHeader eyebrow="Profile" title="Financial Identity & Tier Classification" subtitle="Manage income (changeable anytime), risk profile, emergency reserves, and asset allocations." />
       <form onSubmit={submit} className="stack">
         <section className="metric-grid">
-          <MetricCard icon={<UserRound />} label="Monthly Income" value={currency(draft.monthly_income)} detail="Base gross income" tone="success" />
-          <MetricCard icon={<Database />} label="Savings Balance" value={currency(draft.savings_balance)} detail="Liquid savings" tone="info" />
-          <MetricCard icon={<Database />} label="Investments Balance" value={currency(draft.investments_balance)} detail="Total portfolio" tone="ai" />
-          <MetricCard icon={<LockKeyhole />} label="Total Debt" value={currency(draft.total_debt)} detail="Liabilities" tone="warning" />
+          <MetricCard icon={<UserRound />} label="Monthly Income" value={currency(draft.monthly_income)} detail={`Tier ${tierInfo.tier}: ${tierInfo.needs_pct}/${tierInfo.wants_pct}/${tierInfo.savings_pct}`} tone="success" />
+          <MetricCard icon={<Database />} label="Savings Balance" value={currency(draft.savings_balance)} detail="Liquid emergency reserves" tone="info" />
+          <MetricCard icon={<Database />} label="Investments Balance" value={currency(draft.investments_balance)} detail="Total portfolio assets" tone="ai" />
+          <MetricCard icon={<LockKeyhole />} label="Total Debt" value={currency(draft.total_debt)} detail="Outstanding liabilities" tone="warning" />
         </section>
+
+        {/* Dynamic 5-Tier Income Card */}
+        <Card glow>
+          <div className="section-title"><ShieldCheck /> Dynamic Income Tier: {tierInfo.name}</div>
+          <p className="muted" style={{ margin: "6px 0 16px" }}>{tierInfo.description}</p>
+          <div className="metric-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr", gap: "14px" }}>
+            <div style={{ padding: "14px", background: "var(--surface-hover)", borderRadius: "8px" }}>
+              <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block" }}>Needs Budget ({tierInfo.needs_pct}%)</span>
+              <strong style={{ fontSize: "20px", color: "var(--text-primary)" }}>{currency(tierInfo.needs_amount)}</strong>
+            </div>
+            <div style={{ padding: "14px", background: "var(--surface-hover)", borderRadius: "8px" }}>
+              <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block" }}>Wants Budget ({tierInfo.wants_pct}%)</span>
+              <strong style={{ fontSize: "20px", color: "var(--accent)" }}>{currency(tierInfo.wants_amount)}</strong>
+            </div>
+            <div style={{ padding: "14px", background: "var(--surface-hover)", borderRadius: "8px" }}>
+              <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block" }}>Savings Budget ({tierInfo.savings_pct}%)</span>
+              <strong style={{ fontSize: "20px", color: "var(--accent-success)" }}>{currency(tierInfo.savings_amount)}</strong>
+            </div>
+          </div>
+          <div className="recommendation" style={{ marginTop: "16px" }}>
+            <strong>Action Guidance:</strong> {tierInfo.focus}
+          </div>
+        </Card>
 
         <section className="grid-2">
           <Card>
-            <div className="section-title"><UserRound /> Personal & Income Information</div>
+            <div className="section-title"><UserRound /> Personal Profile & Experience</div>
             <div className="form-grid">
-              <Field label="Name"><input value={draft.name || ""} onChange={(e) => update("name", e.target.value)} /></Field>
-              <Field label="Email"><input value={draft.email || ""} onChange={(e) => update("email", e.target.value)} /></Field>
-              <Field label="Monthly Income (₹)"><input type="number" value={draft.monthly_income} onChange={(e) => update("monthly_income", Number(e.target.value))} required /></Field>
-              <Field label="Emergency Fund (₹)"><input type="number" value={draft.emergency_fund} onChange={(e) => update("emergency_fund", Number(e.target.value))} required /></Field>
-              <Field label="Savings Balance (₹)"><input type="number" value={draft.savings_balance} onChange={(e) => update("savings_balance", Number(e.target.value))} required /></Field>
-              <Field label="Investments Balance (₹)"><input type="number" value={draft.investments_balance} onChange={(e) => update("investments_balance", Number(e.target.value))} required /></Field>
+              <Field label="Full Name"><input value={draft.name || ""} onChange={(e) => update("name", e.target.value)} /></Field>
+              <Field label="Email Address"><input value={draft.email || ""} onChange={(e) => update("email", e.target.value)} /></Field>
+              <Field label="Age"><NumberInput value={draft.age || ""} onChange={(val) => update("age", val)} /></Field>
+              <Field label="Occupation"><input value={draft.occupation || ""} onChange={(e) => update("occupation", e.target.value)} /></Field>
+              <Field label="Income Type">
+                <select value={draft.income_type || "Salaried"} onChange={(e) => update("income_type", e.target.value)}>
+                  <option value="Salaried">Salaried Employee</option>
+                  <option value="Freelance">Freelance / Consultant</option>
+                  <option value="Business">Business / Entrepreneur</option>
+                </select>
+              </Field>
+              <Field label="Dependents (Count)">
+                <NumberInput min="0" max="10" value={draft.dependents || 0} onChange={(val) => update("dependents", val)} />
+              </Field>
+              <Field label="Credit Score (CIBIL/Experian)">
+                <NumberInput min="300" max="900" value={draft.credit_score || 750} onChange={(val) => update("credit_score", val)} />
+              </Field>
+              <Field label="Financial Experience">
+                <select value={draft.financial_experience || "Beginner"} onChange={(e) => update("financial_experience", e.target.value)}>
+                  <option>Beginner</option>
+                  <option>Intermediate</option>
+                  <option>Advanced</option>
+                </select>
+              </Field>
+              <Field label="Risk Appetite">
+                <select value={draft.risk_appetite || "Moderate"} onChange={(e) => update("risk_appetite", e.target.value)}>
+                  <option value="Conservative">Conservative (Capital Preservation)</option>
+                  <option value="Moderate">Moderate (Balanced Growth & Safety)</option>
+                  <option value="Aggressive">Aggressive (Maximum Equity Growth)</option>
+                </select>
+              </Field>
+              <Field label="Lifestyle Preference">
+                <select value={draft.lifestyle_preference || "Balanced"} onChange={(e) => update("lifestyle_preference", e.target.value)}>
+                  <option value="Frugal">Frugal (Low Discretionary Wants)</option>
+                  <option value="Balanced">Balanced (Sustainable Living)</option>
+                  <option value="Experience-focused">Experience-focused (Travel & Living)</option>
+                </select>
+              </Field>
+              <Field label="Primary Financial Goal">
+                <select value={draft.primary_financial_goal || "Wealth Creation"} onChange={(e) => update("primary_financial_goal", e.target.value)}>
+                  <option value="Emergency Fund">Build Emergency Fund</option>
+                  <option value="Debt Elimination">Eliminate High-Interest Debt</option>
+                  <option value="Wealth Creation">Long-Term Wealth Creation</option>
+                  <option value="Home Purchase">Home Purchase / Real Estate</option>
+                  <option value="Retirement">Early Retirement / FIRE</option>
+                </select>
+              </Field>
             </div>
           </Card>
 
           <Card>
-            <div className="section-title"><Palette /> Monthly Expenses</div>
+            <div className="section-title"><Zap /> Income & Liquidity (Editable Anytime)</div>
             <div className="form-grid">
-              {draft.monthly_expenses.map((item, index) => (
-                <Field key={item.category} label={item.category}>
-                  <input type="number" value={item.amount} onChange={(e) => updateExpense(index, e.target.value)} />
+              <Field label="Primary Monthly Base Income (₹)">
+                <NumberInput value={draft.monthly_income} onChange={(val) => update("monthly_income", val)} required />
+              </Field>
+              <Field label="Other / Passive Income (₹/mo)">
+                <NumberInput value={draft.other_income || 0} onChange={(val) => update("other_income", val)} />
+              </Field>
+              <Field label="Monthly Salary Day (1-31)">
+                <NumberInput min="1" max="31" value={draft.salary_day || 1} onChange={(val) => update("salary_day", val)} />
+              </Field>
+              <Field label="Liquid Savings Balance (₹)">
+                <NumberInput value={draft.savings_balance} onChange={(val) => update("savings_balance", val)} required />
+              </Field>
+              <Field label="Emergency Reserve Fund (₹)">
+                <NumberInput value={draft.emergency_fund} onChange={(val) => update("emergency_fund", val)} required />
+              </Field>
+              <Field label="Target Emergency Fund Goal (₹)">
+                <NumberInput value={draft.emergency_target || 0} placeholder={tierInfo.emergency_target.toString()} onChange={(val) => update("emergency_target", val)} />
+              </Field>
+            </div>
+          </Card>
+        </section>
+
+        <section className="grid-2">
+          <Card>
+            <div className="section-title"><Database /> Asset Portfolio Balances</div>
+            <div className="form-grid">
+              <Field label="Equity Mutual Funds (₹)"><NumberInput value={draft.mutual_funds || 0} onChange={(val) => update("mutual_funds", val)} /></Field>
+              <Field label="Direct Stocks (₹)"><NumberInput value={draft.stocks || 0} onChange={(val) => update("stocks", val)} /></Field>
+              <Field label="Fixed Deposits / PPF (₹)"><NumberInput value={draft.fixed_deposits || 0} onChange={(val) => update("fixed_deposits", val)} /></Field>
+              <Field label="Gold / Commodities (₹)"><NumberInput value={draft.gold || 0} onChange={(val) => update("gold", val)} /></Field>
+              <Field label="Provident Fund / EPF / NPS (₹)"><NumberInput value={draft.provident_fund || 0} onChange={(val) => update("provident_fund", val)} /></Field>
+              <Field label="Real Estate / Property (₹)"><NumberInput value={draft.real_estate_value || 0} onChange={(val) => update("real_estate_value", val)} /></Field>
+              <Field label="Crypto / Digital Assets (₹)"><NumberInput value={draft.crypto_value || 0} onChange={(val) => update("crypto_value", val)} /></Field>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="section-title"><LockKeyhole /> Liabilities & EMI Obligations</div>
+            <div className="form-grid">
+              <Field label="Total Outstanding Debt (₹)"><NumberInput value={draft.total_debt} onChange={(val) => update("total_debt", val)} required /></Field>
+              <Field label="Total Monthly EMI Payments (₹)"><NumberInput value={draft.monthly_debt_payment} onChange={(val) => update("monthly_debt_payment", val)} required /></Field>
+            </div>
+          </Card>
+        </section>
+
+        <section className="grid-2">
+          <Card>
+            <div className="section-title"><Palette /> Monthly Fixed Expenses Breakdown</div>
+            <div className="form-grid">
+              {(draft.monthly_expenses || []).map((item, index) => (
+                <Field key={item.category} label={item.category + " (₹)"}>
+                  <NumberInput value={item.amount} onChange={(val) => updateExpense(index, val)} />
                 </Field>
               ))}
+            </div>
+          </Card>
+
+          <Card glow>
+            <div className="section-title"><ShieldCheck /> AI Twin & Intelligence Sync</div>
+            <div className="stack" style={{ gap: '12px' }}>
+              <p className="muted">
+                Updating your income or expenses automatically recalculates your Financial Health Score, Forecast, What-if Simulator scenarios, and Goal Feasibility projections across the platform.
+              </p>
+              <div className="recommendation" style={{ marginTop: '8px' }}>
+                <strong>Tip:</strong> Keep your income suite and recurring debt payments up to date so the anomaly detector correctly calibrates to your real spending patterns.
+              </div>
             </div>
           </Card>
         </section>
 
         <div className="form-actions form-wide" style={{ justifyContent: "flex-end" }}>
-          <Button type="submit"><Save size={16} /> {saved ? "Saved!" : "Save Profile Changes"}</Button>
+          <Button type="submit"><Save size={16} /> {saved ? "Saved Profile!" : "Save Profile Changes"}</Button>
         </div>
       </form>
     </>

@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cx } from "../lib/format";
@@ -85,6 +86,58 @@ export function Field({ label, children }) {
       <span>{label}</span>
       {children}
     </label>
+  );
+}
+
+export function NumberInput({
+  value,
+  onChange,
+  placeholder = "0",
+  min,
+  max,
+  step,
+  className = "",
+  required = false,
+  ...props
+}) {
+  const [localVal, setLocalVal] = useState(
+    value === undefined || value === null ? "" : String(value)
+  );
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    if (!isFocused) {
+      setLocalVal(value === undefined || value === null ? "" : String(value));
+    }
+  }, [value, isFocused]);
+
+  return (
+    <input
+      type="number"
+      className={className}
+      value={isFocused ? localVal : (value === undefined || value === null ? "" : String(value))}
+      placeholder={placeholder}
+      min={min}
+      max={max}
+      step={step}
+      required={required}
+      onFocus={(e) => {
+        setIsFocused(true);
+        e.target.select();
+      }}
+      onBlur={(e) => {
+        setIsFocused(false);
+        const parsed = localVal === "" ? 0 : Number(localVal) || 0;
+        if (onChange) onChange(parsed, e);
+      }}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setLocalVal(raw);
+        const parsed = raw === "" ? 0 : Number(raw) || 0;
+        if (onChange) onChange(parsed, e);
+      }}
+      {...props}
+    />
   );
 }
 

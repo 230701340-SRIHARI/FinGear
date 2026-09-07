@@ -62,10 +62,10 @@ export function Login() {
     <AuthShell title="Understand today. Predict tomorrow. Simulate before you decide." subtitle="A final-year AI financial intelligence platform built around a Financial Digital Twin.">
       <div className="auth-icon"><BrainCircuit /></div>
       <h2>Sign in</h2>
-      <p className="muted">Use local email/password login or continue with Google OAuth.</p>
+      <p className="muted">Use your registered email and password to sign in, or create a new account.</p>
       <form onSubmit={submit} className="stack">
-        <Field label="Email"><input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></Field>
-        <Field label="Password"><input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></Field>
+        <Field label="Email"><input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="you@example.com" /></Field>
+        <Field label="Password"><input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="••••••••" /></Field>
         {(callbackError || authError) && <div className="inline-error">{callbackError || authError}</div>}
         <Button type="submit"><LockKeyhole size={17} /> Login</Button>
         <Button type="button" variant="secondary" onClick={startGoogleLogin} disabled={!google.configured}><Chrome size={17} /> Continue with Google</Button>

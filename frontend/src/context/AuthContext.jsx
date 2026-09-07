@@ -23,10 +23,21 @@ export function AuthProvider({ children }) {
   async function login(payload) {
     setAuthError("");
     try {
-      await persistAuth(await api.auth.login(payload));
+      const cleanPayload = {
+        email: (payload.email || "").trim().toLowerCase(),
+        password: (payload.password || "").trim(),
+      };
+      await persistAuth(await api.auth.login(cleanPayload));
       return true;
-    } catch {
-      setAuthError("Invalid credentials. Register a new account or use the seeded local account.");
+    } catch (err) {
+      let detail = "";
+      try {
+        const parsed = JSON.parse(err.message);
+        if (parsed.detail) detail = parsed.detail;
+      } catch (_) {
+        if (err.message && !err.message.includes("{")) detail = err.message;
+      }
+      setAuthError(detail || "Invalid email or password. Please check your credentials or create a new account.");
       return false;
     }
   }
@@ -34,10 +45,22 @@ export function AuthProvider({ children }) {
   async function register(payload) {
     setAuthError("");
     try {
-      await persistAuth(await api.auth.register(payload));
+      const cleanPayload = {
+        name: (payload.name || "").trim(),
+        email: (payload.email || "").trim().toLowerCase(),
+        password: (payload.password || "").trim(),
+      };
+      await persistAuth(await api.auth.register(cleanPayload));
       return true;
-    } catch {
-      setAuthError("Could not register this account. Try another email.");
+    } catch (err) {
+      let detail = "";
+      try {
+        const parsed = JSON.parse(err.message);
+        if (parsed.detail) detail = parsed.detail;
+      } catch (_) {
+        if (err.message && !err.message.includes("{")) detail = err.message;
+      }
+      setAuthError(detail || "Could not register this account. Try another email.");
       return false;
     }
   }

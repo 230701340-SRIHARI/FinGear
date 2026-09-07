@@ -63,7 +63,13 @@ UNIVERSE_NAMES = ["FOOD", "SHOPPING", "OTHERS"]
 
 
 def get_universe(category: str) -> str:
-    return CATEGORY_UNIVERSE_MAP.get(category, "OTHERS")
+    if not category:
+        return "OTHERS"
+    category_clean = category.strip()
+    if category_clean in CATEGORY_UNIVERSE_MAP:
+        return CATEGORY_UNIVERSE_MAP[category_clean]
+    slug = category_clean.upper().replace(" ", "_").replace("-", "_")
+    return f"CATEGORY_{slug}"
 
 
 # ─── Feature Extraction ─────────────────────────────────────────────────────
@@ -312,18 +318,23 @@ class AnomalyEnsembleManager:
             name: CategoryBrain(universe=name) for name in UNIVERSE_NAMES
         }
 
+    def _get_brain(self, universe: str) -> CategoryBrain:
+        if universe not in self.brains:
+            self.brains[universe] = CategoryBrain(universe=universe)
+        return self.brains[universe]
+
     def train_all(self, transactions: list[dict]):
         """Full (re)training from a list of transactions."""
-        # Group transactions by universe
-        grouped: dict[str, list[dict]] = {name: [] for name in UNIVERSE_NAMES}
+        # Group transactions by universe dynamically
+        grouped: dict[str, list[dict]] = {}
         for txn in transactions:
             if txn.get("type") != "expense":
                 continue
             universe = get_universe(txn.get("category", "Other"))
-            grouped[universe].append(txn)
+            grouped.setdefault(universe, []).append(txn)
 
         for universe, txns in grouped.items():
-            brain = self.brains[universe]
+            brain = self._get_brain(universe)
             brain.transaction_count = len(txns)
 
             if not txns:
@@ -362,7 +373,7 @@ class AnomalyEnsembleManager:
             )
 
         universe = get_universe(transaction.get("category", "Other"))
-        brain = self.brains[universe]
+        brain = self._get_brain(universe)
 
         if brain.transaction_count < PHASE0_MIN_TRANSACTIONS:
             return AnomalyResult(
@@ -378,7 +389,7 @@ class AnomalyEnsembleManager:
             is_anomaly = amount > MEDIAN_MULTIPLIER * brain.median_amount
             score = min(amount / max(brain.median_amount * MEDIAN_MULTIPLIER, 1.0), 1.0) if is_anomaly else 0.0
             return AnomalyResult(
-                is_anomaly=is_anomaly and not transaction.get("acknowledged", False),
+                is_anomaly=is_anomaly and not transaction.get("acknowledged", False) and not transaction.get("model_training_excluded", False),
                 score=round(score, 4),
                 phase=0,
                 kmeans_score=0.0,
@@ -394,7 +405,7 @@ class AnomalyEnsembleManager:
         is_anomaly = score_final > ANOMALY_THRESHOLD
 
         return AnomalyResult(
-            is_anomaly=is_anomaly and not transaction.get("acknowledged", False),
+            is_anomaly=is_anomaly and not transaction.get("acknowledged", False) and not transaction.get("model_training_excluded", False),
             score=round(score_final, 4),
             phase=1,
             kmeans_score=round(s_kmeans, 4),
@@ -405,7 +416,7 @@ class AnomalyEnsembleManager:
     def train_on_feedback(self, transaction: dict):
         """Human-in-the-loop: retrain autoencoder on an acknowledged transaction."""
         universe = get_universe(transaction.get("category", "Other"))
-        brain = self.brains[universe]
+        brain = self._get_brain(universe)
         x = extract_features(transaction)
         brain.autoencoder.train_step(x)
 
@@ -426,10 +437,10 @@ class AnomalyEnsembleManager:
         return status
 
     def get_autoencoder_weights(self, universe: str) -> AutoencoderWeights:
-        return self.brains[universe].autoencoder.weights
+        return self._get_brain(universe).autoencoder.weights
 
     def set_autoencoder_weights(self, universe: str, weights: AutoencoderWeights):
-        self.brains[universe].autoencoder.weights = weights
+        self._get_brain(universe).autoencoder.weights = weights
 
     def reset(self):
         """Factory reset: reinitialize all brains."""

@@ -1,8 +1,8 @@
-import { Activity, ArrowRight, BrainCircuit, CircleDollarSign, Cpu, CreditCard, Gauge, Goal, IndianRupee, Landmark, LineChart, Network, PieChart, Plus, ShieldCheck, SlidersHorizontal, Sparkles, TrendingUp, WalletCards } from "lucide-react";
+import { Activity, ArrowRight, BrainCircuit, CircleDollarSign, Compass, Cpu, CreditCard, Gauge, Goal, IndianRupee, Landmark, LineChart, Network, PieChart, Plus, ShieldCheck, SlidersHorizontal, Sparkles, Target, TrendingUp, WalletCards } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AllocationChart, HealthTrendChart, IncomeExpenseChart, NetWorthChart } from "../components/charts";
-import { Badge, Button, Card, MetricCard, PageHeader, Progress, QuickLinks } from "../components/ui";
+import { Badge, Button, Card, MetricCard, NumberInput, PageHeader, Progress, QuickLinks } from "../components/ui";
 import { useFinance } from "../context/FinanceContext";
 import { currency } from "../lib/format";
 
@@ -11,6 +11,7 @@ export function Dashboard() {
   const kpis = dashboard?.kpis || [];
   const charts = dashboard?.charts || {};
   const forecastReady = aiForecast && aiForecast.status !== "learning";
+  const adaptive = health?.adaptive_ratio || dashboard?.health?.adaptive_ratio;
 
   const [quickLog, setQuickLog] = useState({ amount: "", description: "", category: "Food" });
   const [logging, setLogging] = useState(false);
@@ -44,21 +45,45 @@ export function Dashboard() {
 
       <section className="hero-grid">
         <Card className="hero-card" glow>
-          <Badge tone="success">Twin Status: Live</Badge>
-          <h2>Financial Health {health?.score || dashboard?.health?.score || 72}/100</h2>
-          <p>Current state, predictive state and decision intelligence are connected through your computational financial profile.</p>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap' }}>
+            <Badge tone="success">Twin Status: Live</Badge>
+            {(health?.data_confidence || dashboard?.health?.data_confidence) && (
+              <Badge tone={(health?.data_confidence || dashboard?.health?.data_confidence)?.score >= 80 ? "success" : "info"}>
+                {(health?.data_confidence || dashboard?.health?.data_confidence)?.badge || "Confidence: 85%"}
+              </Badge>
+            )}
+          </div>
+          <h2>Financial Health {health?.score ?? dashboard?.health?.score ?? 72}/100</h2>
+          <p style={{ margin: "4px 0 8px", fontSize: "14px", fontWeight: "600", color: (health?.score ?? dashboard?.health?.score ?? 72) >= 80 ? "var(--accent-success)" : "var(--accent-warning)" }}>
+            {health?.grade || dashboard?.health?.grade || "Financially Healthy"}
+          </p>
+          <p>Explainable Financial Health Network framework calculated from your verified transactions, income tier, and resilience guardrails.</p>
           <div className="hero-actions">
             <Link to="/financial-twin"><Button variant="secondary">View Twin <ArrowRight size={16} /></Button></Link>
             <Link to="/health"><Button variant="ghost">Explain Score</Button></Link>
           </div>
         </Card>
         <Card className="ai-brief">
-          <div className="section-title"><BrainCircuit /> AI Financial Brief <Badge tone="ai">{dashboard?.ai_brief?.confidence || 84}% confidence</Badge></div>
+          <div className="section-title"><BrainCircuit /> AI Financial Brief <Badge tone="ai">{dashboard?.ai_brief?.confidence ?? 65}% confidence</Badge></div>
           <div className="brief-columns">
-            <div><strong>Positive</strong>{(dashboard?.ai_brief?.positive || []).map((item) => <p key={item}>+ {item}</p>)}</div>
-            <div><strong>Needs attention</strong>{(dashboard?.ai_brief?.attention || []).map((item) => <p key={item}>! {item}</p>)}</div>
+            <div>
+              <strong>Positive</strong>
+              {(dashboard?.ai_brief?.positive && dashboard.ai_brief.positive.length > 0) ? (
+                dashboard.ai_brief.positive.map((item) => <p key={item}>+ {item}</p>)
+              ) : (
+                <p className="muted" style={{ fontSize: "13px" }}>Analyzing financial health signals...</p>
+              )}
+            </div>
+            <div>
+              <strong>Needs attention</strong>
+              {(dashboard?.ai_brief?.attention && dashboard.ai_brief.attention.length > 0) ? (
+                dashboard.ai_brief.attention.map((item) => <p key={item}>! {item}</p>)
+              ) : (
+                <p className="muted" style={{ fontSize: "13px" }}>No immediate risk items detected</p>
+              )}
+            </div>
           </div>
-          <p className="recommendation">{dashboard?.ai_brief?.recommendation}</p>
+          <p className="recommendation">{dashboard?.ai_brief?.recommendation || "Maintain positive cash flow and log daily transactions."}</p>
         </Card>
       </section>
 
@@ -79,24 +104,40 @@ export function Dashboard() {
           <div style={{ flex: 1, minWidth: "200px" }}>
             <label className="field">
               <span>Description</span>
-              <input required placeholder="E.g. Coffee" value={quickLog.description} onChange={(e) => setQuickLog({ ...quickLog, description: e.target.value })} />
+              <input required placeholder="E.g. D-Mart Groceries, Coffee" value={quickLog.description} onChange={(e) => setQuickLog({ ...quickLog, description: e.target.value })} />
             </label>
           </div>
           <div style={{ flex: 1, minWidth: "150px" }}>
             <label className="field">
               <span>Amount (₹)</span>
-              <input required type="number" placeholder="0" value={quickLog.amount} onChange={(e) => setQuickLog({ ...quickLog, amount: e.target.value })} />
+              <NumberInput required placeholder="0" value={quickLog.amount} onChange={(val) => setQuickLog({ ...quickLog, amount: val })} />
             </label>
           </div>
-          <div style={{ flex: 1, minWidth: "150px" }}>
+          <div style={{ flex: 1, minWidth: "180px" }}>
             <label className="field">
-              <span>Category</span>
+              <span>Category (Mutually Exclusive)</span>
               <select value={quickLog.category} onChange={(e) => setQuickLog({ ...quickLog, category: e.target.value })}>
-                <option value="Food">Food</option>
-                <option value="Shopping">Shopping</option>
-                <option value="Transport">Transport</option>
-                <option value="Utilities">Utilities</option>
-                <option value="Other">Other</option>
+                <optgroup label="Needs (Essential Outflows)">
+                  <option value="Groceries">Groceries</option>
+                  <option value="Rent">Rent / Housing</option>
+                  <option value="Utilities">Utilities & Bills</option>
+                  <option value="Transport">Fuel / Public Transport</option>
+                  <option value="Healthcare">Healthcare & Medicines</option>
+                  <option value="Insurance">Insurance Premium</option>
+                  <option value="Mandatory EMI">Mandatory EMI</option>
+                </optgroup>
+                <optgroup label="Wants (Discretionary)">
+                  <option value="Dining">Dining Out</option>
+                  <option value="Shopping">Shopping</option>
+                  <option value="Entertainment">Entertainment & OTT</option>
+                  <option value="Travel">Travel & Leisure</option>
+                  <option value="Other">Other Want</option>
+                </optgroup>
+                <optgroup label="Savings / Wealth Building">
+                  <option value="SIP">Mutual Funds / SIP</option>
+                  <option value="Savings">Emergency Fund / FD</option>
+                  <option value="Extra Loan Repayment">Extra Debt Principal Payment</option>
+                </optgroup>
               </select>
             </label>
           </div>
@@ -105,6 +146,82 @@ export function Dashboard() {
           </Button>
         </form>
       </Card>
+
+
+      {adaptive && (
+        <Card glow className="adaptive-pulse-card" style={{ marginBottom: "24px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                <span style={{ fontSize: "18px", fontWeight: "bold", color: "var(--text-primary)" }}>
+                  <Compass size={18} style={{ marginRight: "6px", verticalAlign: "middle", color: "var(--accent-primary)" }} />
+                  Dynamic 50:30:20 Pulse
+                </span>
+                <Badge tone="info">Tier {adaptive.tier}: {adaptive.tier_name}</Badge>
+                {adaptive.is_adapted ? (
+                  <Badge tone="ai">Stepping Rule Active</Badge>
+                ) : (
+                  <Badge tone="success">Slab Target Aligned</Badge>
+                )}
+              </div>
+              <p style={{ margin: 0, fontSize: "13px", color: "var(--text-secondary)" }}>
+                Dynamically calibrated to your salary tier and actual spending velocity.
+              </p>
+            </div>
+            <Link to="/profile">
+              <Button variant="ghost" style={{ fontSize: "12px", padding: "6px 12px" }}>
+                Adjust Income Slab →
+              </Button>
+            </Link>
+          </div>
+
+          <div className="grid-3" style={{ gap: "16px", marginBottom: "16px" }}>
+            <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "14px", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-secondary)" }}>Needs (Fixed)</span>
+                <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{adaptive.actual_needs_pct}% / {adaptive.adaptive_needs_pct}%</strong>
+              </div>
+              <Progress value={(adaptive.actual_needs_pct / Math.max(adaptive.adaptive_needs_pct, 1)) * 100} tone={adaptive.actual_needs_pct <= adaptive.adaptive_needs_pct ? "success" : "warning"} />
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px", fontSize: "11px", color: "var(--text-muted)" }}>
+                <span>Spent: {currency(adaptive.needs_amount)}</span>
+                <span>Slab Target: {adaptive.ideal_needs_pct}%</span>
+              </div>
+            </div>
+
+            <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "14px", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-secondary)" }}>Wants (Discretionary)</span>
+                <strong style={{ fontSize: "14px", color: adaptive.actual_wants_pct > adaptive.adaptive_wants_pct ? "var(--accent-warning)" : "var(--text-primary)" }}>
+                  {adaptive.actual_wants_pct}% / {adaptive.adaptive_wants_pct}%
+                </strong>
+              </div>
+              <Progress value={(adaptive.actual_wants_pct / Math.max(adaptive.adaptive_wants_pct, 1)) * 100} tone={adaptive.actual_wants_pct <= adaptive.adaptive_wants_pct ? "success" : "warning"} />
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px", fontSize: "11px", color: "var(--text-muted)" }}>
+                <span>Spent: {currency(adaptive.wants_amount)}</span>
+                <span>Slab Target: {adaptive.ideal_wants_pct}%</span>
+              </div>
+            </div>
+
+            <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "14px", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-secondary)" }}>Savings & Surplus</span>
+                <strong style={{ fontSize: "14px", color: "var(--accent-success)" }}>{adaptive.actual_savings_pct}% / {adaptive.adaptive_savings_pct}%</strong>
+              </div>
+              <Progress value={(adaptive.actual_savings_pct / Math.max(adaptive.adaptive_savings_pct, 1)) * 100} tone="success" />
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px", fontSize: "11px", color: "var(--text-muted)" }}>
+                <span>Capacity: {currency(adaptive.savings_amount)}</span>
+                <span>Slab Target: {adaptive.ideal_savings_pct}%</span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div className="recommendation" style={{ margin: 0, fontSize: "13px" }}>
+              <strong>Rule Strategy:</strong> {adaptive.adaptation_message}
+            </div>
+          </div>
+        </Card>
+      )}
 
       <section className="grid-2">
         <Card><div className="section-title"><TrendingUp /> Net worth timeline</div><NetWorthChart data={charts.net_worth || []} /></Card>

@@ -46,11 +46,37 @@ export const api = {
   transactions: () => get("/transactions"),
   createTransaction: (transaction) => post("/transactions", transaction),
   deleteTransaction: (id) => request(`/transactions/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  deletedTransactions: () => get("/transactions/deleted/list"),
+  restoreTransaction: (id) => post(`/transactions/${encodeURIComponent(id)}/restore`),
+  updateIncomeSuite: (payload) => post("/transactions/income-suite", payload),
+  uploadBill: async (formData) => {
+    const token = localStorage.getItem("fingear_token");
+    const response = await fetch(apiUrl("/transactions/upload-bill"), {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!response.ok) throw new Error("File upload failed");
+    return response.json();
+  },
+  uploadTransactionBill: async (transactionId, formData) => {
+    const token = localStorage.getItem("fingear_token");
+    const response = await fetch(apiUrl(`/transactions/${encodeURIComponent(transactionId)}/bill`), {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!response.ok) throw new Error("Transaction bill upload failed");
+    return response.json();
+  },
+  getTransactionBill: (transactionId) => get(`/transactions/${encodeURIComponent(transactionId)}/bill`),
+  deleteTransactionBill: (transactionId) => request(`/transactions/${encodeURIComponent(transactionId)}/bill`, { method: "DELETE" }),
   budget: () => get("/budget"),
   health: () => get("/health"),
   forecast: (period = 24) => get(`/forecast?period=${period}`),
   goals: () => get("/goals"),
   createGoal: (goal) => post("/goals", goal),
+  updateGoal: (goalName, goal) => put(`/goals/${encodeURIComponent(goalName)}`, goal),
   deleteGoal: (goalName) => request(`/goals/${encodeURIComponent(goalName)}`, { method: "DELETE" }),
   investments: () => get("/investments"),
   debt: () => get("/debt"),
@@ -69,8 +95,8 @@ export const api = {
     forecast: () => get("/ai/forecast"),
     anomalies: () => get("/ai/anomalies"),
     acknowledge: (txnId) => post(`/ai/anomalies/${encodeURIComponent(txnId)}/acknowledge`),
+    exclude: (txnId) => post(`/ai/anomalies/${encodeURIComponent(txnId)}/exclude`),
     weights: () => get("/ai/weights"),
     reset: () => request("/ai/reset", { method: "POST" }),
   },
 };
-

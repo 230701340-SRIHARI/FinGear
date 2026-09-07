@@ -25,85 +25,69 @@ def clamp(value: float, low: float = 0, high: float = 100) -> int:
     return int(max(low, min(high, round(value))))
 
 
-def health_score(profile: FinancialProfile) -> dict:
-    expenses = total_expenses(profile)
-    cash_flow = monthly_cash_flow(profile)
-    savings_rate = max(cash_flow, 0) / profile.monthly_income
-    debt_ratio = profile.monthly_debt_payment / profile.monthly_income
-    emergency_months = profile.emergency_fund / max(expenses + profile.monthly_debt_payment, 1)
-    investment_ratio = profile.investments_balance / max(profile.monthly_income * 12, 1)
-    spending_ratio = expenses / profile.monthly_income
+from app.services.financial_health import (
+    BUCKET_INCOME,
+    BUCKET_NEEDS,
+    BUCKET_SAVINGS,
+    BUCKET_WANTS,
+    classify_category,
+    compute_financial_health_score,
+    get_tier_by_income,
+)
 
-    components = [
-        ScoreComponent(
-            "Emergency fund",
-            clamp((emergency_months / 6) * 100),
-            f"Covers {emergency_months:.1f} months of expenses; target is 6 months.",
-        ),
-        ScoreComponent(
-            "Savings discipline",
-            clamp((savings_rate / 0.25) * 100),
-            f"Monthly free cash flow is {savings_rate:.0%} of income; target is 25%.",
-        ),
-        ScoreComponent(
-            "Debt safety",
-            clamp(100 - (debt_ratio / 0.4) * 100),
-            f"Debt payments use {debt_ratio:.0%} of income; safer range is below 30-40%.",
-        ),
-        ScoreComponent(
-            "Investment progress",
-            clamp((investment_ratio / 1.0) * 100),
-            "Compares current investments with one year of income.",
-        ),
-        ScoreComponent(
-            "Spending control",
-            clamp(100 - max(0, spending_ratio - 0.55) / 0.45 * 100),
-            f"Core expenses use {spending_ratio:.0%} of income.",
-        ),
-    ]
-    score = round(sum(component.value for component in components) / len(components))
-    suggestions = []
-    if emergency_months < 3:
-        suggestions.append("Build emergency fund toward at least 3 months first.")
-    if savings_rate < 0.15:
-        suggestions.append("Reduce flexible expenses or automate savings to improve cash flow.")
-    if debt_ratio > 0.35:
-        suggestions.append("Avoid new loans until debt payments fall below 35% of income.")
-    if investment_ratio < 0.5:
-        suggestions.append("Increase consistent investing once emergency savings are stable.")
-    if not suggestions:
-        suggestions.append("Profile is stable; focus on goal planning and investment consistency.")
+
+def get_income_tier_info(income: float) -> dict:
+    inc = float(income or 0.0)
+    tier = get_tier_by_income(inc)
+    needs_amt = round(inc * (tier.needs_pct / 100.0), 2)
+    wants_amt = round(inc * (tier.wants_pct / 100.0), 2)
+    savings_amt = round(inc * (tier.savings_pct / 100.0), 2)
+    
+    # Risk-based emergency target (Survival has ₹25,000 floor)
+    emergency_target = tier.min_emergency if tier.tier == 1 else round(needs_amt * 3.0, 2)
+    if tier.tier == 1 and emergency_target < 25_000:
+        emergency_target = 25_000.0
 
     return {
-        "score": score,
-        "grade": "Excellent" if score >= 80 else "Good" if score >= 65 else "Needs attention",
-        "components": [component.__dict__ for component in components],
-        "suggestions": suggestions,
-        "monthly_cash_flow": round(cash_flow, 2),
-        "savings_rate": round(savings_rate, 4),
+        "tier": tier.tier,
+        "name": tier.name,
+        "range": tier.income_range,
+        "needs_pct": tier.needs_pct,
+        "wants_pct": tier.wants_pct,
+        "savings_pct": tier.savings_pct,
+        "needs_amount": needs_amt,
+        "wants_amount": wants_amt,
+        "savings_amount": savings_amt,
+        "emergency_target": emergency_target,
+        "focus": tier.focus,
+        "details": tier.description,
     }
 
 
+NEEDS_CATEGORIES = BUCKET_NEEDS
+WANTS_CATEGORIES = BUCKET_WANTS
+SAVINGS_CATEGORIES = BUCKET_SAVINGS
+
+
+
+
+def compute_adaptive_503020(profile: FinancialProfile, transactions: list[dict] | None = None) -> dict:
+    return compute_financial_health_score(profile, transactions=transactions)["adaptive_ratio"]
+
+
+def health_score(
+    profile: FinancialProfile,
+    transactions: list[dict] | None = None,
+    budgets: list[dict] | None = None
+) -> dict:
+    return compute_financial_health_score(profile, transactions=transactions, budgets=budgets)
+
+
+
 def forecast(profile: FinancialProfile, months: int = 24) -> dict:
-    cash_flow = monthly_cash_flow(profile)
-    monthly_growth = 0.006
-    rows = []
-    savings = profile.savings_balance
-    investments = profile.investments_balance
-    for month in range(1, months + 1):
-        savings += max(cash_flow, 0) * 0.55
-        investments = investments * (1 + monthly_growth) + max(cash_flow, 0) * 0.45
-        net_worth = savings + investments - profile.total_debt
-        rows.append(
-            {
-                "month": month,
-                "savings": round(savings, 2),
-                "investments": round(investments, 2),
-                "net_worth": round(net_worth, 2),
-                "cash_flow": round(cash_flow, 2),
-            }
-        )
-    return {"months": rows}
+    from app.ml.forecasting import ForecastEngine
+    result = ForecastEngine().predict(profile, months=months)
+    return {"months": result.months}
 
 
 def goal_plan(profile: FinancialProfile) -> list[dict]:
@@ -155,12 +139,21 @@ def simulate(profile: FinancialProfile, scenario: Scenario) -> dict:
     if scenario.extra_monthly_investment > 0:
         scenario_expenses.append(ExpenseItem(category="Extra investment", amount=scenario.extra_monthly_investment))
 
+    simulated_goals = [g.model_copy() for g in profile.goals]
+    if scenario.target_goal_name:
+        for sg in simulated_goals:
+            if sg.name == scenario.target_goal_name:
+                extra_cash = scenario.income_change - scenario.expense_change + scenario.extra_monthly_investment
+                sg.monthly_contribution += extra_cash
+                break
+
     simulated = profile.model_copy(
         update={
             "monthly_income": max(profile.monthly_income + scenario.income_change, 1),
             "monthly_expenses": scenario_expenses,
             "monthly_debt_payment": profile.monthly_debt_payment + scenario.new_monthly_loan_payment,
             "investments_balance": profile.investments_balance + scenario.extra_monthly_investment,
+            "goals": simulated_goals,
         }
     )
     base = health_score(profile)

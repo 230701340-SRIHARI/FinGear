@@ -1,17 +1,28 @@
 import { Activity, ArrowRight, Calculator, Copy, Goal, History, LineChart, RotateCcw, Save, Sparkles, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { ScenarioBars } from "../components/charts";
-import { Badge, Button, Card, ConfirmModal, Field, MetricCard, PageHeader, QuickLinks } from "../components/ui";
+import { Badge, Button, Card, ConfirmModal, Field, MetricCard, NumberInput, PageHeader, QuickLinks } from "../components/ui";
 import { useFinance } from "../context/FinanceContext";
 import { currency } from "../lib/format";
 
 const scenarioTypes = ["Salary Change", "Expense Change", "New Loan", "Vehicle Purchase", "Home Purchase", "Increase SIP", "Reduce Spending", "Change Investment Return", "Change Retirement Age", "Multi-Factor Adjustment"];
 
 export function Simulator() {
-  const { profile, runSimulation } = useFinance();
-  const [scenario, setScenario] = useState({ name: "Increase salary and SIP", scenario_type: "Salary Change", income_change: 10000, expense_change: 3000, extra_monthly_investment: 5000, new_monthly_loan_payment: 0, investment_return_change: 0 });
+  const { profile, runSimulation, goals } = useFinance();
+  const location = useLocation();
+  const [scenario, setScenario] = useState(
+    location.state?.scenario || { name: "Increase salary and SIP", scenario_type: "Salary Change", income_change: 10000, expense_change: 3000, extra_monthly_investment: 5000, new_monthly_loan_payment: 0, investment_return_change: 0 }
+  );
   const [result, setResult] = useState(null);
   const [processing, setProcessing] = useState(false);
+
+  useEffect(() => {
+    if (location.state?.scenario) {
+      setScenario(location.state.scenario);
+      window.history.replaceState({}, document.title) // Clear state so refresh doesn't hold it forever
+    }
+  }, [location.state]);
 
   async function submit(event) {
     event.preventDefault();
@@ -45,6 +56,22 @@ export function Simulator() {
     { label: "Net worth", current: Math.round(result.baseline_net_worth / 10000), simulated: Math.round(result.projected_net_worth / 10000) },
   ] : [];
 
+  const targetGoalName = location.state?.target_goal_name;
+  let targetGoalImpact = null;
+  if (result && targetGoalName) {
+    const baseGoal = goals.analysis?.find(g => g.name === targetGoalName);
+    const simGoal = result.goals?.find(g => g.name === targetGoalName);
+    if (baseGoal && simGoal) {
+      targetGoalImpact = {
+        name: targetGoalName,
+        baseProb: baseGoal.achievement_probability,
+        simProb: simGoal.achievement_probability,
+        baseExpected: baseGoal.expected_months,
+        simExpected: simGoal.expected_months
+      };
+    }
+  }
+
   return (
     <>
       <PageHeader eyebrow="Financial Decision Lab" title="Test financial decisions before making them" subtitle="The simulator clones your digital twin, applies scenario changes, recalculates health, forecast and goals, and never mutates the real profile." />
@@ -58,10 +85,10 @@ export function Simulator() {
                 {scenarioTypes.map((item) => <option key={item}>{item}</option>)}
               </select>
             </Field>
-            {showIncome && <Field label="Income change"><input type="number" value={scenario.income_change === 0 ? "" : scenario.income_change} onChange={(e) => setScenario({ ...scenario, income_change: Number(e.target.value) })} /></Field>}
-            {showExpense && <Field label="Expense change"><input type="number" value={scenario.expense_change === 0 ? "" : scenario.expense_change} onChange={(e) => setScenario({ ...scenario, expense_change: Number(e.target.value) })} /></Field>}
-            {showInvestment && <Field label="Extra investment"><input type="number" value={scenario.extra_monthly_investment === 0 ? "" : scenario.extra_monthly_investment} onChange={(e) => setScenario({ ...scenario, extra_monthly_investment: Number(e.target.value) })} /></Field>}
-            {showEMI && <Field label="New EMI"><input type="number" value={scenario.new_monthly_loan_payment === 0 ? "" : scenario.new_monthly_loan_payment} onChange={(e) => setScenario({ ...scenario, new_monthly_loan_payment: Number(e.target.value) })} /></Field>}
+            {showIncome && <Field label="Income change"><NumberInput value={scenario.income_change} onChange={(val) => setScenario({ ...scenario, income_change: val })} /></Field>}
+            {showExpense && <Field label="Expense change"><NumberInput value={scenario.expense_change} onChange={(val) => setScenario({ ...scenario, expense_change: val })} /></Field>}
+            {showInvestment && <Field label="Extra investment"><NumberInput value={scenario.extra_monthly_investment} onChange={(val) => setScenario({ ...scenario, extra_monthly_investment: val })} /></Field>}
+            {showEMI && <Field label="New EMI"><NumberInput value={scenario.new_monthly_loan_payment} onChange={(val) => setScenario({ ...scenario, new_monthly_loan_payment: val })} /></Field>}
             <Button disabled={processing}><Sparkles size={17} /> {processing ? "Simulating..." : "Run Simulation"}</Button>
           </form>
         </Card>
@@ -72,15 +99,34 @@ export function Simulator() {
       </section>
       {result && (
         <>
-          <section className="metric-grid">
-            <MetricCard icon={<Activity />} label="Financial Health" value={`${result.base_score} → ${result.simulated_score}`} detail={`${result.score_delta > 0 ? "+" : ""}${result.score_delta} points`} tone={result.score_delta >= 0 ? "success" : "warning"} />
-            <MetricCard icon={<Calculator />} label="Monthly Cash Flow" value={`${currency(result.base_cash_flow)} → ${currency(result.simulated_cash_flow)}`} detail={currency(result.cash_flow_delta)} tone="info" />
-            <MetricCard icon={<ArrowRight />} label="Projected Net Worth" value={currency(result.projected_net_worth)} detail="12 month simulated state" tone="ai" />
-          </section>
-          <section className="grid-2">
-            <Card><div className="section-title">Current vs simulated state</div><ScenarioBars data={chart} /></Card>
-            <Card glow><div className="section-title">Decision recommendation</div><p className="recommendation">{result.recommendation}</p><div className="state-list">{result.goals?.map((goal) => <span key={goal.name}>{goal.name}: {goal.achievement_probability}% achievable</span>)}</div></Card>
-          </section>
+          {!targetGoalName && (
+            <>
+              <section className="metric-grid">
+                <MetricCard icon={<Activity />} label="Financial Health" value={`${result.base_score} → ${result.simulated_score}`} detail={`${result.score_delta > 0 ? "+" : ""}${result.score_delta} points`} tone={result.score_delta >= 0 ? "success" : "warning"} />
+                <MetricCard icon={<Calculator />} label="Monthly Cash Flow" value={`${currency(result.base_cash_flow)} → ${currency(result.simulated_cash_flow)}`} detail={currency(result.cash_flow_delta)} tone="info" />
+                <MetricCard icon={<ArrowRight />} label="Projected Net Worth" value={currency(result.projected_net_worth)} detail="12 month simulated state" tone="ai" />
+              </section>
+              <section className="grid-2">
+                <Card><div className="section-title">Current vs simulated state</div><ScenarioBars data={chart} /></Card>
+                <Card glow><div className="section-title">Decision recommendation</div><p className="recommendation">{result.recommendation}</p><div className="state-list">{result.goals?.map((goal) => <span key={goal.name}>{goal.name}: {goal.achievement_probability}% achievable</span>)}</div></Card>
+              </section>
+            </>
+          )}
+          {targetGoalImpact && (
+            <Card glow style={{ marginTop: '20px', border: '1px solid var(--accent-success)' }}>
+              <div className="section-title"><Goal /> Impact on: {targetGoalImpact.name}</div>
+              <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
+                 <div>
+                   <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Probability</div>
+                   <div style={{ fontSize: '24px', fontWeight: 'bold', color: targetGoalImpact.simProb >= targetGoalImpact.baseProb ? 'var(--accent-success)' : 'inherit' }}>{targetGoalImpact.baseProb}% → {targetGoalImpact.simProb}%</div>
+                 </div>
+                 <div>
+                   <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Time to reach</div>
+                   <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{targetGoalImpact.baseExpected || "N/A"} mo → {targetGoalImpact.simExpected || "N/A"} mo</div>
+                 </div>
+              </div>
+            </Card>
+          )}
         </>
       )}
       <QuickLinks links={[

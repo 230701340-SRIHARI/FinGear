@@ -12,6 +12,16 @@ def get_profile(user_id: str = Depends(get_current_user_id)) -> dict:
     return memory.state_copy(user_id)["profile"]
 
 
+from app.services.financial_health import get_tier_by_income
+
+
 @router.put("")
 def update_profile(profile: FinancialProfile, user_id: str = Depends(get_current_user_id)) -> dict:
-    return memory.update_profile(user_id, profile.model_dump())
+    data = profile.model_dump()
+    tier = get_tier_by_income(data.get("monthly_income", 0))
+    data["monthly_income_tier"] = tier.tier
+    data["target_needs_ratio"] = tier.needs_pct
+    data["target_wants_ratio"] = tier.wants_pct
+    data["target_savings_ratio"] = tier.savings_pct
+    return memory.update_profile(user_id, data)
+

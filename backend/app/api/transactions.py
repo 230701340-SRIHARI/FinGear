@@ -1,4 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status
+from fastapi.responses import FileResponse
+import os
+import shutil
+import hashlib
+from datetime import datetime
 
 from app.core.security import get_current_user_id
 from app.ml.ai_engine import ai_engine
@@ -39,3 +44,86 @@ def delete_transaction(transaction_id: str, user_id: str = Depends(get_current_u
     transactions = memory.state_copy(user_id)["transactions"]
     return {"transactions": transactions, "summary": transaction_summary(transactions)}
 
+
+@router.get("/deleted/list")
+def list_deleted_transactions(user_id: str = Depends(get_current_user_id)) -> dict:
+    deleted = memory.get_deleted_transactions_60days(user_id)
+    return {"deleted_transactions": deleted}
+
+
+@router.post("/income-suite")
+def update_income_suite(payload: dict, user_id: str = Depends(get_current_user_id)) -> dict:
+    amount = float(payload.get("amount", 0))
+    apply_to_all_months = bool(payload.get("apply_to_all_months", True))
+    txn_id = payload.get("transaction_id")
+    updated_profile = memory.update_monthly_income_suite(user_id, amount, apply_to_all_months, transaction_id=txn_id)
+    return {"profile": updated_profile, "status": "updated"}
+
+
+@router.post("/{transaction_id}/restore")
+def restore_transaction(transaction_id: str, user_id: str = Depends(get_current_user_id)) -> dict:
+    memory.restore_transaction(user_id, transaction_id)
+    transactions = memory.state_copy(user_id)["transactions"]
+    return {"transactions": transactions, "summary": transaction_summary(transactions)}
+
+
+@router.post("/upload-bill")
+async def upload_bill(file: UploadFile = File(...), user_id: str = Depends(get_current_user_id)) -> dict:
+    os.makedirs("uploads", exist_ok=True)
+    filename = file.filename.replace(" ", "_")
+    file_location = f"uploads/{datetime.now().timestamp()}_{filename}"
+    content = await file.read()
+    with open(file_location, "wb") as f:
+        f.write(content)
+    return {"bill_url": f"/{file_location}", "filename": file.filename}
+
+
+@router.post("/{transaction_id}/bill")
+async def attach_transaction_bill(transaction_id: str, file: UploadFile = File(...), user_id: str = Depends(get_current_user_id)) -> dict:
+    if file.content_type not in ("application/pdf", "application/octet-stream") and not file.filename.endswith(".pdf"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only application/pdf files are accepted.")
+    
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File size exceeds maximum 10MB limit.")
+
+    os.makedirs("uploads", exist_ok=True)
+    filename = file.filename.replace(" ", "_")
+    storage_key = f"uploads/{datetime.now().timestamp()}_{filename}"
+    
+    with open(storage_key, "wb") as f:
+        f.write(content)
+
+    checksum = hashlib.sha256(content).hexdigest()
+
+    bill_metadata = {
+        "original_filename": file.filename,
+        "storage_key": storage_key,
+        "mime_type": "application/pdf",
+        "file_size": len(content),
+        "checksum": checksum,
+        "uploaded_at": datetime.now().isoformat(),
+        "url": f"/{storage_key}"
+    }
+
+    try:
+        updated_bill = memory.attach_bill_to_transaction(user_id, transaction_id, bill_metadata)
+        return {"attached": True, "bill": updated_bill}
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.get("/{transaction_id}/bill")
+def get_transaction_bill(transaction_id: str, user_id: str = Depends(get_current_user_id)) -> dict:
+    bill = memory.get_transaction_bill(user_id, transaction_id)
+    if not bill:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bill not found for this transaction.")
+    return {"bill": bill}
+
+
+@router.delete("/{transaction_id}/bill")
+def delete_transaction_bill(transaction_id: str, user_id: str = Depends(get_current_user_id)) -> dict:
+    success = memory.delete_transaction_bill(user_id, transaction_id)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bill not found or could not be removed.")
+    return {"removed": True, "message": "Bill reference removed successfully."}

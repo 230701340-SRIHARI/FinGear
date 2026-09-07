@@ -163,77 +163,29 @@ class ForecastBrain:
         monthly_pot_contributions: float = 0.0,
     ) -> ForecastResult:
         """
-        Full forecast pipeline: aggregate transactions by day, check maturity, infer/train.
-
-        Args:
-            transactions: List of transaction dicts with 'date', 'amount', 'type' keys.
-            current_balance: User's current savings balance.
-            monthly_income: User's monthly income.
-            monthly_pot_contributions: Monthly contributions to savings pots.
+        Full forecast pipeline delegating to the unified app.ml.forecasting.UserForecastingEngine.
+        - Days < 7: Statistical & rule-based baseline (never returning zero).
+        - Days >= 7: Custom user-trained RandomForestRegressor.
         """
-        # Aggregate daily expense totals
-        daily_expenses = _aggregate_daily_expenses(transactions)
-        unique_days = len(daily_expenses)
+        from app.ml.forecasting import UserForecastingEngine
 
-        if unique_days < WINDOW_SIZE:
-            return ForecastResult(
-                predicted_tomorrow=0.0,
-                projected_monthly_total=0.0,
-                projected_savings=0.0,
-                confidence=0,
-                data_maturity_days=unique_days,
-                status="learning",
-                status_message=f"App is learning your habits ({WINDOW_SIZE - unique_days} days to go)...",
-                days_until_ready=WINDOW_SIZE - unique_days,
-            )
-
-        # Get sorted dates
-        sorted_dates = sorted(daily_expenses.keys())
-
-        # Build the most recent 7-day window for inference
-        recent_7 = [daily_expenses.get(sorted_dates[-(WINDOW_SIZE - i)], 0.0) for i in range(WINDOW_SIZE, 0, -1)]
-
-        # Online training if we have >= 8 days
-        if unique_days >= WINDOW_SIZE + 1:
-            # Train on all available sliding windows
-            for i in range(len(sorted_dates) - WINDOW_SIZE):
-                window_dates = sorted_dates[i : i + WINDOW_SIZE]
-                label_date = sorted_dates[i + WINDOW_SIZE]
-                x = [daily_expenses[d] for d in window_dates]
-                y = daily_expenses[label_date]
-                self.train(x, y)
-
-        # Inference
-        predicted_tomorrow = self.infer(recent_7)
-
-        # Financial projections
-        today = date.today()
-        days_in_month = (today.replace(month=today.month % 12 + 1, day=1) - timedelta(days=1)).day if today.month < 12 else 31
-        day_of_month = today.day
-        remaining_days = max(days_in_month - day_of_month, 0)
-
-        # Spent so far this month
-        month_start = today.replace(day=1)
-        spent_this_month = sum(
-            v for k, v in daily_expenses.items()
-            if k >= month_start
+        engine = UserForecastingEngine(monthly_income=monthly_income)
+        daily_res = engine.forecast_daily(
+            transactions=transactions,
+            current_balance=current_balance,
+            monthly_income=monthly_income,
+            monthly_pot_contributions=monthly_pot_contributions,
         )
 
-        projected_monthly_total = spent_this_month + (predicted_tomorrow * remaining_days)
-        projected_savings = current_balance + monthly_pot_contributions - projected_monthly_total
-
-        status = "training" if unique_days >= WINDOW_SIZE + 1 else "inferring"
-        confidence = min(50 + unique_days * 5, 92)
-
         return ForecastResult(
-            predicted_tomorrow=round(predicted_tomorrow, 2),
-            projected_monthly_total=round(projected_monthly_total, 2),
-            projected_savings=round(projected_savings, 2),
-            confidence=confidence,
-            data_maturity_days=unique_days,
-            status=status,
-            status_message=f"Forecast active with {unique_days} days of data.",
-            days_until_ready=0,
+            predicted_tomorrow=daily_res.predicted_tomorrow,
+            projected_monthly_total=daily_res.projected_monthly_total,
+            projected_savings=daily_res.projected_savings,
+            confidence=daily_res.confidence,
+            data_maturity_days=daily_res.data_maturity_days,
+            status=daily_res.status,
+            status_message=daily_res.status_message,
+            days_until_ready=daily_res.days_until_ready,
         )
 
 
