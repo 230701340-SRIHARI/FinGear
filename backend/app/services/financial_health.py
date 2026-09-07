@@ -12,6 +12,7 @@ An explainable, adaptive, transaction-driven scoring engine that measures:
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
@@ -192,7 +193,7 @@ def _extract_recent_metrics(profile: FinancialProfile, transactions: list[dict] 
     
     days_count = len(distinct_dates)
 
-    if not valid_txns or days_count < 7:
+    if not valid_txns:
         # Fallback to profile definitions when transactions are not yet logged
         needs_sum = 0.0
         wants_sum = 0.0
@@ -224,8 +225,8 @@ def _extract_recent_metrics(profile: FinancialProfile, transactions: list[dict] 
             "EMI": profile_emi,
             "OD": profile_debt,
             "EF": profile_ef,
-            "days_count": days_count,
-            "txns_count": len(valid_txns),
+            "days_count": 0,
+            "txns_count": 0,
             "is_from_transactions": False,
             "monthly_contributions_count": 3 if profile_income > 0 else 0,
             "on_time_bills_ratio": 1.0,
@@ -242,6 +243,7 @@ def _extract_recent_metrics(profile: FinancialProfile, transactions: list[dict] 
     savings_total = 0.0
     months_with_savings = set()
     months_tracked = set()
+    category_totals = defaultdict(float)
 
     for t in valid_txns:
         raw_d = str(t.get("date") or t.get("transaction_date") or "")[:10]
@@ -263,20 +265,46 @@ def _extract_recent_metrics(profile: FinancialProfile, transactions: list[dict] 
             income_total += amt
         elif bucket == "Needs":
             needs_total += amt
+            category_totals[cat] += amt
         elif bucket == "Savings":
             savings_total += amt
+            category_totals[cat] += amt
             months_with_savings.add(m_key)
         else:
             wants_total += amt
+            category_totals[cat] += amt
 
     active_months_divisor = max(len(months_tracked), 1)
-    
-    # Calculate monthly averages
-    avg_income = income_total / active_months_divisor if income_total > 0 else profile_income
-    avg_needs = (needs_total / active_months_divisor) + profile_emi
-    avg_wants = wants_total / active_months_divisor
-    avg_savings = (savings_total / active_months_divisor)
-    
+
+    all_exp = profile.detailed_expenses or profile.monthly_expenses or []
+    if days_count < 30 and all_exp:
+        # Blend profile fixed commitments with active tracked transactions
+        untracked_needs = 0.0
+        untracked_wants = 0.0
+        untracked_savings = 0.0
+        for item in all_exp:
+            cat = item.category
+            amt = float(item.amount or 0.0)
+            bucket = classify_category(cat, "expense")
+            if cat not in category_totals:
+                if bucket == "Needs":
+                    untracked_needs += amt
+                elif bucket == "Savings":
+                    untracked_savings += amt
+                else:
+                    untracked_wants += amt
+
+        avg_needs = (needs_total / active_months_divisor) + untracked_needs + profile_emi
+        avg_wants = (wants_total / active_months_divisor) + untracked_wants
+        avg_savings = (savings_total / active_months_divisor) + untracked_savings
+    else:
+        avg_needs = (needs_total / active_months_divisor) + profile_emi
+        avg_wants = wants_total / active_months_divisor
+        avg_savings = (savings_total / active_months_divisor)
+
+    # Calculate monthly income
+    avg_income = (income_total / active_months_divisor) if income_total > 0 else profile_income
+
     # If voluntary surplus wasn't booked as transaction transfers, calculate surplus
     surplus = max(0.0, avg_income - avg_needs - avg_wants)
     if avg_savings == 0.0 and surplus > 0:
@@ -290,7 +318,7 @@ def _extract_recent_metrics(profile: FinancialProfile, transactions: list[dict] 
         "EMI": profile_emi,
         "OD": profile_debt,
         "EF": profile_ef,
-        "days_count": days_count,
+        "days_count": max(days_count, 1),
         "txns_count": len(valid_txns),
         "is_from_transactions": True,
         "monthly_contributions_count": min(len(months_with_savings) or (1 if avg_savings > 0 else 0), 3),
@@ -546,7 +574,7 @@ def compute_financial_health_score(
 
     # ── DATA CONFIDENCE (SEPARATE BADGE) ─────────────────────────────────────
     # DataConfidence = 0.40 * HistoryCompleteness + 0.40 * CategorisationCompleteness + 0.20 * IncomeVerificationCompleteness
-    history_completeness = min(100.0, (days_count / 90.0) * 100.0) if metrics["is_from_transactions"] else 50.0
+    history_completeness = min(100.0, max(30.0, (days_count / 30.0) * 100.0)) if metrics["is_from_transactions"] else 40.0
     
     if metrics["txns_count"] > 0:
         categorized_txns = sum(
@@ -557,7 +585,7 @@ def compute_financial_health_score(
     else:
         categorisation_completeness = 75.0 if profile.monthly_expenses else 30.0
 
-    income_verification = 100.0 if (metrics["is_from_transactions"] and I > 0) else (80.0 if profile_income > 0 else 20.0)
+    income_verification = 100.0 if (metrics["is_from_transactions"] and I > 0) else (85.0 if profile_income > 0 else 20.0)
 
     data_confidence_score = round(
         (0.40 * history_completeness)
@@ -566,16 +594,16 @@ def compute_financial_health_score(
     )
     data_confidence_score = max(10, min(100, data_confidence_score))
 
-    is_provisional = days_count < 30 and not (profile_income > 0 and profile.monthly_expenses)
+    is_provisional = days_count < 7 and not (profile_income > 0 and (profile.monthly_expenses or metrics["txns_count"] > 0))
     if data_confidence_score >= 80 and not is_provisional:
         confidence_level = "High confidence"
-        confidence_badge = "High Confidence"
+        confidence_badge = f"High Confidence ({data_confidence_score}%)"
     elif data_confidence_score >= 50 and not is_provisional:
         confidence_level = "Moderate confidence"
-        confidence_badge = "Moderate Confidence"
+        confidence_badge = f"Moderate Confidence ({data_confidence_score}%)"
     else:
         confidence_level = "Provisional score"
-        confidence_badge = "Provisional Financial Health Score"
+        confidence_badge = f"Provisional Score ({data_confidence_score}%)"
 
     # ── ADAPTIVE RECOMMENDATION ENGINE ───────────────────────────────────────
     recommendations = []

@@ -12,7 +12,7 @@ export function Simulator() {
   const { profile, runSimulation, goals } = useFinance();
   const location = useLocation();
   const [scenario, setScenario] = useState(
-    location.state?.scenario || { name: "Increase salary and SIP", scenario_type: "Salary Change", income_change: 10000, expense_change: 3000, extra_monthly_investment: 5000, new_monthly_loan_payment: 0, investment_return_change: 0 }
+    location.state?.scenario || { name: "", scenario_type: "Salary Change", income_change: 10000, expense_change: 3000, extra_monthly_investment: 5000, new_monthly_loan_payment: 0, investment_return_change: 0 }
   );
   const [result, setResult] = useState(null);
   const [processing, setProcessing] = useState(false);
@@ -27,7 +27,11 @@ export function Simulator() {
   async function submit(event) {
     event.preventDefault();
     setProcessing(true);
-    setResult(await runSimulation(scenario));
+    const payload = {
+      ...scenario,
+      name: scenario.name?.trim() || `${scenario.scenario_type} Simulation`
+    };
+    setResult(await runSimulation(payload));
     setProcessing(false);
   }
 
@@ -79,7 +83,7 @@ export function Simulator() {
         <Card>
           <div className="section-title"><Calculator /> Scenario builder</div>
           <form onSubmit={submit} className="form-grid">
-            <Field label="Scenario name"><input value={scenario.name} onChange={(e) => setScenario({ ...scenario, name: e.target.value })} /></Field>
+            <Field label="Scenario name"><input value={scenario.name} onChange={(e) => setScenario({ ...scenario, name: e.target.value })} placeholder="e.g. Salary hike or purchase planning" /></Field>
             <Field label="Scenario type">
               <select value={scenario.scenario_type} onChange={(e) => handleTypeChange(e.target.value)}>
                 {scenarioTypes.map((item) => <option key={item}>{item}</option>)}

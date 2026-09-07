@@ -13,20 +13,47 @@ export function Dashboard() {
   const forecastReady = aiForecast && aiForecast.status !== "learning";
   const adaptive = health?.adaptive_ratio || dashboard?.health?.adaptive_ratio;
 
+  const [quickLogType, setQuickLogType] = useState("expense"); // "expense" | "savings" | "income"
   const [quickLog, setQuickLog] = useState({ amount: "", description: "", category: "Food" });
   const [logging, setLogging] = useState(false);
+  const [logToast, setLogToast] = useState("");
 
   async function handleQuickLog(e) {
     e.preventDefault();
     if (!quickLog.amount || !quickLog.description) return;
     setLogging(true);
+    const numAmount = Number(quickLog.amount);
+    const cat = quickLog.category;
+    const txnType = quickLogType === "income" ? "income" : (quickLogType === "savings" ? "savings" : "expense");
+
     await addTransaction({
-      ...quickLog,
-      type: "expense",
-      date: new Date().toISOString().split("T")[0],
-      amount: Number(quickLog.amount)
+      description: quickLog.description,
+      amount: numAmount,
+      category: cat,
+      type: txnType,
+      date: new Date().toISOString().split("T")[0]
     });
-    setQuickLog({ amount: "", description: "", category: "Food" });
+
+    if (cat === "Emergency Fund") {
+      setLogToast(`✓ ₹${numAmount.toLocaleString("en-IN")} added directly to your Emergency Fund! Overall reserve and runway increased.`);
+    } else if (cat === "Fixed Deposit" || cat === "FD") {
+      setLogToast(`✓ ₹${numAmount.toLocaleString("en-IN")} added to Fixed Deposits (FD)! Overall savings balance updated.`);
+    } else if (cat === "Mutual Funds" || cat === "SIP") {
+      setLogToast(`✓ ₹${numAmount.toLocaleString("en-IN")} invested in Mutual Funds / SIP! Investment portfolio updated.`);
+    } else if (cat === "Stocks") {
+      setLogToast(`✓ ₹${numAmount.toLocaleString("en-IN")} allocated to Stocks & Equity!`);
+    } else if (cat === "Gold") {
+      setLogToast(`✓ ₹${numAmount.toLocaleString("en-IN")} allocated to Gold holdings!`);
+    } else if (cat === "Provident Fund") {
+      setLogToast(`✓ ₹${numAmount.toLocaleString("en-IN")} contributed to Provident Fund (PPF/EPF)!`);
+    } else if (cat === "Extra Loan Repayment") {
+      setLogToast(`✓ ₹${numAmount.toLocaleString("en-IN")} extra principal payment logged! Total debt reduced.`);
+    } else {
+      setLogToast(`✓ ₹${numAmount.toLocaleString("en-IN")} logged successfully under ${cat}.`);
+    }
+
+    setTimeout(() => setLogToast(""), 6000);
+    setQuickLog({ amount: "", description: "", category: quickLogType === "savings" ? "Emergency Fund" : (quickLogType === "income" ? "Salary" : "Groceries") });
     setLogging(false);
   }
 
@@ -99,12 +126,54 @@ export function Dashboard() {
       </section>
 
       <Card glow>
-        <div className="section-title" style={{ marginBottom: "16px" }}><Plus /> Quick Log Expense</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
+          <div className="section-title" style={{ margin: 0 }}><Plus /> Quick Transaction Log</div>
+          {/* Mode Switcher */}
+          <div style={{ display: "flex", gap: "6px", background: "var(--bg-card)", padding: "3px", borderRadius: "8px", border: "1px solid var(--border-color)" }}>
+            <button
+              type="button"
+              className={`btn btn-sm ${quickLogType === "expense" ? "btn-primary" : "btn-ghost"}`}
+              onClick={() => {
+                setQuickLogType("expense");
+                setQuickLog((q) => ({ ...q, category: "Groceries" }));
+              }}
+            >
+              Expense (Needs/Wants)
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${quickLogType === "savings" ? "btn-primary" : "btn-ghost"}`}
+              onClick={() => {
+                setQuickLogType("savings");
+                setQuickLog((q) => ({ ...q, category: "Emergency Fund" }));
+              }}
+            >
+              🛡️ Savings & Investments
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${quickLogType === "income" ? "btn-primary" : "btn-ghost"}`}
+              onClick={() => {
+                setQuickLogType("income");
+                setQuickLog((q) => ({ ...q, category: "Salary" }));
+              }}
+            >
+              💰 Income
+            </button>
+          </div>
+        </div>
+
+        {logToast && (
+          <div style={{ background: "rgba(16, 185, 129, 0.12)", border: "1px solid var(--accent-success)", color: "var(--accent-success)", padding: "10px 14px", borderRadius: "8px", marginBottom: "14px", fontSize: "14px", fontWeight: "600", display: "flex", alignItems: "center", gap: "8px" }}>
+            <span>{logToast}</span>
+          </div>
+        )}
+
         <form onSubmit={handleQuickLog} style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: "200px" }}>
             <label className="field">
               <span>Description</span>
-              <input required placeholder="E.g. D-Mart Groceries, Coffee" value={quickLog.description} onChange={(e) => setQuickLog({ ...quickLog, description: e.target.value })} />
+              <input required placeholder={quickLogType === "savings" ? "E.g. Monthly Emergency reserve top-up, SIP" : "E.g. D-Mart Groceries, House Rent"} value={quickLog.description} onChange={(e) => setQuickLog({ ...quickLog, description: e.target.value })} />
             </label>
           </div>
           <div style={{ flex: 1, minWidth: "150px" }}>
@@ -113,36 +182,56 @@ export function Dashboard() {
               <NumberInput required placeholder="0" value={quickLog.amount} onChange={(val) => setQuickLog({ ...quickLog, amount: val })} />
             </label>
           </div>
-          <div style={{ flex: 1, minWidth: "180px" }}>
+          <div style={{ flex: 1, minWidth: "220px" }}>
             <label className="field">
-              <span>Category (Mutually Exclusive)</span>
+              <span>Category</span>
               <select value={quickLog.category} onChange={(e) => setQuickLog({ ...quickLog, category: e.target.value })}>
-                <optgroup label="Needs (Essential Outflows)">
-                  <option value="Groceries">Groceries</option>
-                  <option value="Rent">Rent / Housing</option>
-                  <option value="Utilities">Utilities & Bills</option>
-                  <option value="Transport">Fuel / Public Transport</option>
-                  <option value="Healthcare">Healthcare & Medicines</option>
-                  <option value="Insurance">Insurance Premium</option>
-                  <option value="Mandatory EMI">Mandatory EMI</option>
-                </optgroup>
-                <optgroup label="Wants (Discretionary)">
-                  <option value="Dining">Dining Out</option>
-                  <option value="Shopping">Shopping</option>
-                  <option value="Entertainment">Entertainment & OTT</option>
-                  <option value="Travel">Travel & Leisure</option>
-                  <option value="Other">Other Want</option>
-                </optgroup>
-                <optgroup label="Savings / Wealth Building">
-                  <option value="SIP">Mutual Funds / SIP</option>
-                  <option value="Savings">Emergency Fund / FD</option>
-                  <option value="Extra Loan Repayment">Extra Debt Principal Payment</option>
-                </optgroup>
+                {quickLogType === "savings" ? (
+                  <optgroup label="Savings, Reserves & Investments">
+                    <option value="Emergency Fund">🛡️ Emergency Fund (Builds Runway & Reserve)</option>
+                    <option value="Fixed Deposit">🏦 Fixed Deposit (FD)</option>
+                    <option value="Mutual Funds">📈 Mutual Funds / SIP</option>
+                    <option value="Stocks">📊 Stocks & Direct Equity</option>
+                    <option value="Gold">🥇 Gold / Sovereign Gold Bonds</option>
+                    <option value="Provident Fund">🏛️ Provident Fund (PPF / EPF)</option>
+                    <option value="Extra Loan Repayment">💳 Extra Loan Principal Repayment</option>
+                  </optgroup>
+                ) : quickLogType === "income" ? (
+                  <optgroup label="Income Inflows">
+                    <option value="Salary">Salary Inflow</option>
+                    <option value="Freelance">Freelance / Consulting</option>
+                    <option value="Business">Business Revenue</option>
+                    <option value="Bonus">Incentive / Bonus</option>
+                    <option value="Interest">Interest & Dividend</option>
+                    <option value="Other Income">Other Inflow</option>
+                  </optgroup>
+                ) : (
+                  <>
+                    <optgroup label="Needs (Fixed & Essential Outflows)">
+                      <option value="Groceries">Groceries & Daily Essentials</option>
+                      <option value="Rent">Rent / Housing</option>
+                      <option value="Utilities">Utilities, Electricity & WiFi</option>
+                      <option value="Transport">Fuel & Public Transport</option>
+                      <option value="Healthcare">Healthcare & Medicines</option>
+                      <option value="Insurance">Insurance Premium</option>
+                      <option value="Mandatory EMI">Mandatory Loan EMI</option>
+                      <option value="Education">Education & Tuition</option>
+                    </optgroup>
+                    <optgroup label="Wants (Discretionary Outflows)">
+                      <option value="Dining">Dining Out & Food Delivery</option>
+                      <option value="Shopping">Shopping & Fashion</option>
+                      <option value="Entertainment">Entertainment & Streaming</option>
+                      <option value="Travel">Travel & Weekend Getaways</option>
+                      <option value="Lifestyle">Lifestyle & Personal Care</option>
+                      <option value="Other">Other Want</option>
+                    </optgroup>
+                  </>
+                )}
               </select>
             </label>
           </div>
           <Button disabled={logging} style={{ marginBottom: "2px" }}>
-            {logging ? "Saving..." : "Log Expense"}
+            {logging ? "Saving..." : (quickLogType === "savings" ? "Log Savings / Asset" : (quickLogType === "income" ? "Log Income" : "Log Expense"))}
           </Button>
         </form>
       </Card>

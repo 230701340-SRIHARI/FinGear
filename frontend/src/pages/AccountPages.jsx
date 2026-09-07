@@ -1,4 +1,4 @@
-import { Bell, Database, Eye, LockKeyhole, Palette, RotateCcw, Save, ShieldCheck, UserRound, Volume2, Zap } from "lucide-react";
+import { Bell, Database, Eye, Info, LockKeyhole, Palette, RotateCcw, Save, ShieldCheck, UserRound, Volume2, Zap } from "lucide-react";
 import { useState } from "react";
 import { Badge, Button, Card, Field, MetricCard, NumberInput, PageHeader } from "../components/ui";
 import { useFinance } from "../context/FinanceContext";
@@ -23,70 +23,72 @@ function computeTierInfo(income, dependents = 0, incomeType = "Salaried") {
       wants_amount: inc * 0.15,
       savings_amount: inc * 0.20,
       emergency_target: Math.max(25000, needsAmt * riskMonths),
-      focus: "Prioritize building a ₹25,000 emergency fund in a liquid savings account before any market investing.",
-      description: "Fixed living costs dominate income. Focus on basics and building the initial ₹25,000 emergency buffer."
+      description: "Focus on bare essential living costs, low-cost essentials, and debt avoidance. 65% of income must prioritize needs.",
+      focus: "Build the first ₹25,000 safety cushion, avoid high-cost informal debt, and stabilize cash flow.",
     };
-  } else if (inc < 50000) {
-    const needsAmt = inc * 0.50;
+  }
+  if (inc < 50000) {
+    const needsAmt = inc * 0.60;
     return {
       tier: 2,
       name: "Baseline (₹30,000 – ₹50,000)",
+      needs_pct: 60,
+      wants_pct: 20,
+      savings_pct: 20,
+      needs_amount: needsAmt,
+      wants_amount: inc * 0.20,
+      savings_amount: inc * 0.20,
+      emergency_target: Math.max(50000, needsAmt * riskMonths),
+      description: "Transitioning toward stability. Essential needs take priority while establishing regular automated savings.",
+      focus: "Build 3 months of emergency fund, keep non-essential spending under 20%, and start a recurring deposit or index fund SIP.",
+    };
+  }
+  if (inc < 80000) {
+    const needsAmt = inc * 0.50;
+    return {
+      tier: 3,
+      name: "Accumulation (₹50,000 – ₹80,000)",
       needs_pct: 50,
       wants_pct: 30,
       savings_pct: 20,
       needs_amount: needsAmt,
       wants_amount: inc * 0.30,
       savings_amount: inc * 0.20,
-      emergency_target: needsAmt * riskMonths,
-      focus: "Move past cash savings and start long-term wealth building via Equity Mutual Fund SIPs and Public Provident Fund (PPF).",
-      description: "Classic 50:30:20 budgeting fits perfectly. Covers standard living costs with room for lifestyle and consistent investing."
+      emergency_target: Math.max(100000, needsAmt * riskMonths),
+      description: "Classic 50:30:20 budgeting fits perfectly. Covers standard living costs with room for lifestyle and consistent investing.",
+      focus: "Automate 20% to diversified SIPs, maintain 4–6 months emergency fund, and cap discretionary wants strictly at 30%.",
     };
-  } else if (inc < 80000) {
+  }
+  if (inc < 125000) {
     const needsAmt = inc * 0.45;
     return {
-      tier: 3,
-      name: "Accumulation (₹50,000 – ₹80,000)",
+      tier: 4,
+      name: "Reverse Budget (₹80,000 – ₹1,25,000)",
       needs_pct: 45,
       wants_pct: 25,
       savings_pct: 30,
       needs_amount: needsAmt,
       wants_amount: inc * 0.25,
       savings_amount: inc * 0.30,
-      emergency_target: needsAmt * riskMonths,
-      focus: "Aggressively scale your investments between Equity Mutual Funds (ELSS for tax saving) and liquid funds.",
-      description: "Basic needs don't double with income. Squeeze needs down to 45% and scale savings to 30% to accelerate wealth generation."
-    };
-  } else if (inc < 125000) {
-    const needsAmt = inc * 0.40;
-    return {
-      tier: 4,
-      name: "Reverse Budget (₹80,000 – ₹1,25,000)",
-      needs_pct: 40,
-      wants_pct: 20,
-      savings_pct: 40,
-      needs_amount: needsAmt,
-      wants_amount: inc * 0.20,
-      savings_amount: inc * 0.40,
-      emergency_target: needsAmt * riskMonths,
-      focus: "Invest 40% first before discretionary spending. Compound in direct equity, diversified mutual funds, and retirement corpus.",
-      description: "Avoid lifestyle inflation by prioritizing savings first. Compounding assets grow before upgrading lifestyle."
-    };
-  } else {
-    const needsAmt = inc * 0.35;
-    return {
-      tier: 5,
-      name: "Wealth Building (₹1,25,000+)",
-      needs_pct: 35,
-      wants_pct: 15,
-      savings_pct: 50,
-      needs_amount: needsAmt,
-      wants_amount: inc * 0.15,
-      savings_amount: inc * 0.50,
-      emergency_target: needsAmt * riskMonths,
-      focus: "Optimize for maximum tax efficiency and multi-asset allocation (International funds, debt instruments, large-cap equities).",
-      description: "Savings rate is dominant category (50%+). Comfortably supports FIRE and large-scale financial freedom."
+      emergency_target: Math.max(150000, needsAmt * riskMonths),
+      description: "Reverse 50:30:20 slab. Pay yourself first: allocate 30% directly to investments and keep living costs well below 50%.",
+      focus: "Aggressive wealth compounding via equity mutual funds and NPS; resist lifestyle inflation as income expands.",
     };
   }
+  const needsAmt = inc * 0.40;
+  return {
+    tier: 5,
+    name: "Wealth Building (₹1,25,000+)",
+    needs_pct: 40,
+    wants_pct: 25,
+    savings_pct: 35,
+    needs_amount: needsAmt,
+    wants_amount: inc * 0.25,
+    savings_amount: inc * 0.35,
+    emergency_target: Math.max(250000, needsAmt * riskMonths),
+    description: "High savings velocity slab. Discretionary surplus allows 35%+ direct allocation to investments and early financial freedom.",
+    focus: "Maximize tax-advantaged accounts, build multi-asset portfolio, and maintain 6 months liquid reserves.",
+  };
 }
 
 
@@ -94,6 +96,7 @@ export function Profile() {
   const { profile, saveProfile } = useFinance();
   const [draft, setDraft] = useState(profile);
   const [saved, setSaved] = useState(false);
+  const [showTierReason, setShowTierReason] = useState(false);
 
   const tierInfo = computeTierInfo(draft.monthly_income, draft.dependents, draft.income_type);
 
@@ -127,8 +130,64 @@ export function Profile() {
 
         {/* Dynamic 5-Tier Income Card */}
         <Card glow>
-          <div className="section-title"><ShieldCheck /> Dynamic Income Tier: {tierInfo.name}</div>
-          <p className="muted" style={{ margin: "6px 0 16px" }}>{tierInfo.description}</p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+            <div className="section-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <ShieldCheck /> Dynamic Income Tier: {tierInfo.name}
+              <button
+                type="button"
+                onClick={() => setShowTierReason(!showTierReason)}
+                aria-label="Why am I in this tier?"
+                title="Click to see why you are assigned to this tier"
+                style={{
+                  background: showTierReason ? "var(--accent)" : "rgba(255, 255, 255, 0.08)",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: "50%",
+                  width: "22px",
+                  height: "22px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  color: showTierReason ? "#fff" : "var(--text-secondary)",
+                  padding: 0,
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <Info size={13} />
+              </button>
+            </div>
+            <Badge tone="ai">Tier {tierInfo.tier} of 5</Badge>
+          </div>
+
+          {showTierReason && (
+            <div style={{
+              background: "rgba(59, 130, 246, 0.08)",
+              border: "1px solid rgba(59, 130, 246, 0.25)",
+              borderRadius: "8px",
+              padding: "12px 14px",
+              margin: "12px 0",
+              fontSize: "13px",
+              lineHeight: "1.5",
+              color: "var(--text-primary)"
+            }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                <Info size={16} style={{ color: "var(--accent)", flexShrink: 0, marginTop: "2px" }} />
+                <div>
+                  <strong style={{ color: "var(--accent)" }}>Why are you assigned to Tier {tierInfo.tier}?</strong>
+                  <p style={{ margin: "4px 0 6px", color: "var(--text-secondary)" }}>
+                    Your net monthly income of <strong>{currency(draft.monthly_income)}</strong> places your profile into the <strong>Tier {tierInfo.tier} ({tierInfo.name})</strong> bracket.
+                  </p>
+                  <div style={{ display: "grid", gap: "4px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                    <span>• <strong>Income Band Rationale:</strong> Standardized against urban Indian living costs to set realistic, non-punitive expenditure baselines.</span>
+                    <span>• <strong>Recommended Target Ratio ({tierInfo.needs_pct}% Needs : {tierInfo.wants_pct}% Wants : {tierInfo.savings_pct}% Savings):</strong> Structured so essential bills do not compromise your emergency safety cushion or wealth accumulation.</span>
+                    <span>• <strong>Resilience Target:</strong> Based on {draft.dependents || 0} dependent(s) and a {draft.income_type || "Salaried"} income profile, requiring a minimum liquid emergency fund of <strong>{currency(tierInfo.emergency_target)}</strong>.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <p className="muted" style={{ margin: "8px 0 16px" }}>{tierInfo.description}</p>
           <div className="metric-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr", gap: "14px" }}>
             <div style={{ padding: "14px", background: "var(--surface-hover)", borderRadius: "8px" }}>
               <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block" }}>Needs Budget ({tierInfo.needs_pct}%)</span>

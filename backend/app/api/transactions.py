@@ -16,6 +16,7 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 @router.get("")
 def list_transactions(user_id: str = Depends(get_current_user_id)) -> dict:
+    memory.process_recurring_transactions(user_id)
     transactions = memory.state_copy(user_id)["transactions"]
     return {"transactions": transactions, "summary": transaction_summary(transactions)}
 
@@ -127,3 +128,35 @@ def delete_transaction_bill(transaction_id: str, user_id: str = Depends(get_curr
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bill not found or could not be removed.")
     return {"removed": True, "message": "Bill reference removed successfully."}
+
+
+@router.get("/recurring")
+def get_recurring_transactions(user_id: str = Depends(get_current_user_id)) -> dict:
+    return {"recurring": memory.get_recurring_transactions(user_id)}
+
+
+@router.post("/recurring")
+def add_recurring_transaction(payload: dict, user_id: str = Depends(get_current_user_id)) -> dict:
+    created = memory.add_recurring_transaction(user_id, payload)
+    return {"recurring": created}
+
+
+@router.put("/recurring/{recurring_id}")
+def update_recurring_transaction(recurring_id: str, payload: dict, user_id: str = Depends(get_current_user_id)) -> dict:
+    try:
+        updated = memory.update_recurring_transaction(user_id, recurring_id, payload)
+        return {"recurring": updated}
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.delete("/recurring/{recurring_id}")
+def delete_recurring_transaction(recurring_id: str, user_id: str = Depends(get_current_user_id)) -> dict:
+    memory.delete_recurring_transaction(user_id, recurring_id)
+    return {"status": "deleted"}
+
+
+@router.post("/recurring/process")
+def process_recurring_transactions(user_id: str = Depends(get_current_user_id)) -> dict:
+    processed = memory.process_recurring_transactions(user_id)
+    return {"processed": processed}

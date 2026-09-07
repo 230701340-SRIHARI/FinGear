@@ -57,7 +57,7 @@ export function AppShell() {
         </div>
         
         <div className="top-actions">
-          <Link to="/settings" className="user-chip" style={{ textDecoration: 'none', cursor: 'pointer' }}>
+          <Link to="/profile" className="user-chip" style={{ textDecoration: 'none', cursor: 'pointer' }} title="View Profile">
             <span>{user?.name?.slice(0, 1) || "U"}</span>
             <strong style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{user?.name || "User"}</strong>
           </Link>

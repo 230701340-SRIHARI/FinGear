@@ -111,6 +111,11 @@ def _goal_projection(goal: Goal, available_monthly: float, profile: FinancialPro
         probability = (probability * 0.6) + (ml_feasibility * 0.4)
     
     expected_months = None if planned_monthly <= 0 else round(gap / planned_monthly)
+    projected_amount_at_deadline = round(min(goal.target_amount, goal.current_amount + (planned_monthly * goal.target_months)), 2)
+    shortfall = round(max(0.0, goal.target_amount - projected_amount_at_deadline), 2)
+    monthly_deficit = round(max(0.0, required_monthly - planned_monthly), 2)
+    delay_months = max(0, (expected_months or goal.target_months) - goal.target_months)
+
     return {
         "name": goal.name,
         "target_amount": round(goal.target_amount, 2),
@@ -125,6 +130,17 @@ def _goal_projection(goal: Goal, available_monthly: float, profile: FinancialPro
         "achievement_probability": clamp(probability),
         "expected_months": expected_months,
         "status": "On track" if probability >= 70 else "Needs more savings",
+        "projected_amount_at_deadline": projected_amount_at_deadline,
+        "shortfall": shortfall,
+        "monthly_deficit": monthly_deficit,
+        "delay_months": delay_months,
+        "paths": {
+            "path_a_extra_monthly": monthly_deficit,
+            "path_b_sip_boost": round(monthly_deficit * 0.5, 2),
+            "path_b_expense_cut": round(monthly_deficit * 0.5, 2),
+            "path_c_delay_months": delay_months,
+            "path_c_expected_months": expected_months or goal.target_months,
+        }
     }
 
 

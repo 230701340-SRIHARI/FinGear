@@ -25,6 +25,7 @@ const initialData = {
   aiStatus: null,
   aiForecast: null,
   aiAnomalies: { anomalies: [], count: 0 },
+  recurring: { recurring: [] },
 };
 
 export function FinanceProvider({ children }) {
@@ -58,6 +59,7 @@ export function FinanceProvider({ children }) {
         aiStatus,
         aiForecast,
         aiAnomalies,
+        recurring,
       ] = await Promise.all([
         api.profile().catch(() => demoProfile),
         api.dashboard().catch(() => null),
@@ -78,6 +80,7 @@ export function FinanceProvider({ children }) {
         api.ai.status().catch(() => null),
         api.ai.forecast().catch(() => null),
         api.ai.anomalies().catch(() => ({ anomalies: [], count: 0 })),
+        api.recurringTransactions().catch(() => ({ recurring: [] })),
       ]);
       setData({
         profile,
@@ -99,6 +102,7 @@ export function FinanceProvider({ children }) {
         aiStatus,
         aiForecast,
         aiAnomalies,
+        recurring,
       });
     } catch (err) {
       console.error("Finance refresh error:", err);
@@ -121,6 +125,50 @@ export function FinanceProvider({ children }) {
   }
 
   async function addTransaction(transaction) {
+    // 1. Instant optimistic asset & ledger update for 0ms reactivity
+    const amount = Number(transaction.amount) || 0;
+    const cat = transaction.category;
+    setData((current) => {
+      const prof = { ...(current.profile || demoProfile) };
+      if (cat === "Emergency Fund") {
+        prof.emergency_fund = (prof.emergency_fund || 0) + amount;
+        prof.savings_balance = (prof.savings_balance || 0) + amount;
+      } else if (cat === "Fixed Deposit" || cat === "FD") {
+        prof.fixed_deposits = (prof.fixed_deposits || 0) + amount;
+        prof.savings_balance = (prof.savings_balance || 0) + amount;
+      } else if (cat === "Mutual Funds" || cat === "SIP") {
+        prof.mutual_funds = (prof.mutual_funds || 0) + amount;
+        prof.investments_balance = (prof.investments_balance || 0) + amount;
+      } else if (cat === "Stocks" || cat === "Equity") {
+        prof.stocks = (prof.stocks || 0) + amount;
+        prof.investments_balance = (prof.investments_balance || 0) + amount;
+      } else if (cat === "Gold") {
+        prof.gold = (prof.gold || 0) + amount;
+        prof.investments_balance = (prof.investments_balance || 0) + amount;
+      } else if (cat === "Provident Fund" || cat === "PPF" || cat === "EPF") {
+        prof.provident_fund = (prof.provident_fund || 0) + amount;
+        prof.investments_balance = (prof.investments_balance || 0) + amount;
+      } else if (cat === "Extra Loan Repayment" || cat === "Extra Debt Prepayment") {
+        prof.total_debt = Math.max(0, (prof.total_debt || 0) - amount);
+      } else if (cat === "Savings") {
+        prof.savings_balance = (prof.savings_balance || 0) + amount;
+        prof.emergency_fund = (prof.emergency_fund || 0) + amount;
+      }
+      const newTxns = [
+        { id: "temp-" + Date.now(), ...transaction, amount },
+        ...(current.transactions?.transactions || [])
+      ];
+      return {
+        ...current,
+        profile: prof,
+        transactions: {
+          ...current.transactions,
+          transactions: newTxns
+        }
+      };
+    });
+
+    // 2. Persist to backend and synchronize
     await api.createTransaction(transaction);
     await refresh();
   }
@@ -256,6 +304,55 @@ export function FinanceProvider({ children }) {
     }
   }
 
+  async function updateBudgets(items) {
+    setError("");
+    try {
+      await api.updateBudgets(items);
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not update budgets.");
+    }
+  }
+
+  async function addRecurringTransaction(item) {
+    setError("");
+    try {
+      await api.createRecurringTransaction(item);
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not create recurring transaction.");
+    }
+  }
+
+  async function updateRecurringTransaction(id, item) {
+    setError("");
+    try {
+      await api.updateRecurringTransaction(id, item);
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not update recurring transaction.");
+    }
+  }
+
+  async function deleteRecurringTransaction(id) {
+    setError("");
+    try {
+      await api.deleteRecurringTransaction(id);
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Could not delete recurring transaction.");
+    }
+  }
+
+  async function processRecurring() {
+    try {
+      await api.processRecurringTransactions();
+      await refresh();
+    } catch (err) {
+      console.error("Failed to process recurring transactions:", err);
+    }
+  }
+
   async function uploadBill(file) {
     const formData = new FormData();
     formData.append("file", file);
@@ -286,6 +383,7 @@ export function FinanceProvider({ children }) {
       deleteTransaction,
       restoreTransaction,
       updateIncomeSuite,
+      updateBudgets,
       uploadBill,
       fetchDeletedTransactions,
       deleteSimulation,
@@ -298,6 +396,10 @@ export function FinanceProvider({ children }) {
       acknowledgeAnomaly,
       excludeAnomaly,
       resetAI,
+      addRecurringTransaction,
+      updateRecurringTransaction,
+      deleteRecurringTransaction,
+      processRecurring,
     }),
     [data, loading, error]
   );

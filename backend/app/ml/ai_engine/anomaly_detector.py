@@ -394,7 +394,7 @@ class AnomalyEnsembleManager:
                 phase=0,
                 kmeans_score=0.0,
                 autoencoder_score=0.0,
-                reason=f"Phase 0: Amount {'exceeds' if is_anomaly else 'within'} {MEDIAN_MULTIPLIER}× median ({brain.median_amount:.0f}) for {universe}."
+                reason=f"Baseline check: Amount {'exceeds' if is_anomaly else 'within'} {MEDIAN_MULTIPLIER}× median ({brain.median_amount:.0f}) for {universe}."
             )
 
         # Phase 1: Ensemble

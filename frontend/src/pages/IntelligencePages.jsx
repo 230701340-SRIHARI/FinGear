@@ -1,4 +1,4 @@
-import { Activity, Bot, BrainCircuit, CircleDollarSign, Compass, Cpu, FileText, Goal, LineChart, MessageSquare, ShieldAlert, Sparkles, SlidersHorizontal, TrendingUp } from "lucide-react";
+import { Activity, Bot, BrainCircuit, CalendarClock, CircleDollarSign, Compass, Cpu, Download, FileText, Goal, LineChart, MessageSquare, Printer, ShieldAlert, Sparkles, SlidersHorizontal, TrendingUp, X } from "lucide-react";
 import { useState, useEffect } from "react";
 import { HealthTrendChart, NetWorthChart, ScoreRadial } from "../components/charts";
 import { Badge, Button, Card, EmptyState, Field, MetricCard, PageHeader, Progress, QuickLinks } from "../components/ui";
@@ -20,7 +20,6 @@ export function Health() {
         subtitle="Transparent, adaptive scoring powered by real transactions, income tier targets, and liquidity guardrails — not a black-box ML score." 
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <Badge tone="ai">🏛️ {health?.method || "Explainable Financial Health Model"}</Badge>
             <Badge tone={conf.score >= 80 ? "success" : conf.score >= 50 ? "info" : "warning"}>
               {conf.badge || "Confidence: 85%"}
             </Badge>
@@ -306,7 +305,6 @@ export function Insights() {
         eyebrow="AI Insights" 
         title="Automated financial intelligence center" 
         subtitle="Risks, opportunities and behavior changes generated from your financial twin." 
-        actions={<Badge tone="ai">🤖 Anomaly & Insight Brain</Badge>}
       />
       <section className="insight-grid">
         {sortedInsights.map((item) => (
@@ -327,20 +325,331 @@ export function Insights() {
 
 export function Timeline() {
   const { timeline } = useFinance();
+  const [filter, setFilter] = useState("all");
+
+  const events = timeline.events || [];
+  const filteredEvents = events.filter((e) => {
+    if (filter === "income") return e.type?.toLowerCase().includes("income");
+    if (filter === "liability") return e.type?.toLowerCase().includes("liability") || e.type?.toLowerCase().includes("emi");
+    if (filter === "goal") return e.type?.toLowerCase().includes("goal");
+    if (filter === "milestone") return e.type?.toLowerCase().includes("milestone");
+    return true;
+  });
+
   return (
     <>
-      <PageHeader eyebrow="Financial Timeline" title="Chronological financial event stream" subtitle="A history layer for your personal finance operating system." />
-      <Card><div className="timeline">{timeline.events?.map((event) => <article key={`${event.period}-${event.title}`}><Badge tone="info">{event.period}</Badge><strong>{event.title}</strong><span>{event.value}</span><small>{event.type}</small></article>)}</div></Card>
+      <PageHeader 
+        eyebrow="Financial Timeline" 
+        title="Chronological Financial Event Stream" 
+        subtitle="A verified history and forward projection layer for your personal finance operating system." 
+      />
+      <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
+        {[
+          { id: "all", label: "All Events" },
+          { id: "income", label: "Income & Salary" },
+          { id: "liability", label: "Liabilities & Debt" },
+          { id: "goal", label: "Goal Horizons" },
+          { id: "milestone", label: "System Milestones" },
+        ].map((f) => (
+          <Button
+            key={f.id}
+            variant={filter === f.id ? "primary" : "secondary"}
+            onClick={() => setFilter(f.id)}
+            style={{ fontSize: "12px", height: "32px", padding: "0 12px" }}
+          >
+            {f.label}
+          </Button>
+        ))}
+      </div>
+
+      <Card>
+        {filteredEvents.length ? (
+          <div className="timeline-container">
+            {filteredEvents.map((event) => (
+              <article 
+                key={event.id || `${event.period}-${event.title}`} 
+                style={{ 
+                  display: "grid", 
+                  gridTemplateColumns: "130px 1fr auto", 
+                  gap: "14px", 
+                  alignItems: "center", 
+                  padding: "14px 0", 
+                  borderBottom: "1px solid var(--border-color)" 
+                }}
+              >
+                <div>
+                  <Badge tone={event.tone || "info"}>{event.period}</Badge>
+                </div>
+                <div>
+                  <strong style={{ display: "block", fontSize: "14px", color: "var(--text-primary)" }}>{event.title}</strong>
+                  <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{event.description}</span>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <strong style={{ 
+                    fontSize: "14px", 
+                    color: event.tone === "success" ? "var(--accent-success)" : event.tone === "warning" ? "var(--accent-warning)" : "inherit" 
+                  }}>
+                    {event.value}
+                  </strong>
+                  <small style={{ display: "block", fontSize: "11px", color: "var(--text-muted)" }}>{event.type}</small>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No timeline events found" detail="Select another filter or add transactions and goals to populate this view." />
+        )}
+      </Card>
     </>
   );
 }
 
 export function Reports() {
-  const { reports } = useFinance();
+  const { reports, profile, health, forecast, goals, budget } = useFinance();
+  const [selectedReport, setSelectedReport] = useState(null);
+
+  const reportList = reports.reports || [
+    { name: "Monthly Financial Report", status: "Ready", summary: "Income, expenses, cash flow and score breakdown." },
+    { name: "Financial Health Report", status: "Ready", summary: "Explainable component-level health assessment." },
+    { name: "Forecast Report", status: "Ready", summary: "Baseline projection using current behavior assumptions." },
+    { name: "Goal Progress Report", status: "Ready", summary: "Goal feasibility, gap and recommendations." },
+  ];
+
+  function downloadReportCSV(reportName) {
+    let content = `Report,${reportName}\nGenerated,${new Date().toLocaleDateString()}\nUser,${profile?.name || "User"}\n\n`;
+    if (reportName.includes("Health")) {
+      content += `Overall Health Score,${health?.score || 0}/100\nGrade,${health?.grade || "N/A"}\nSummary,${health?.why || ""}\n\nDimension,Score,Max Points,Weight,Reason\n`;
+      (health?.components || []).forEach(c => {
+        content += `"${c.label}",${c.value},${c.max_points},${c.weight_pct}%,"${c.reason || ""}"\n`;
+      });
+    } else if (reportName.includes("Monthly") || reportName.includes("Budget")) {
+      content += `Monthly Income,${currency(profile?.monthly_income || 0)}\nPlanned Budget,${currency(budget?.planned || 0)}\nActual Spending,${currency(budget?.actual || 0)}\n\nCategory,Planned,Actual\n`;
+      (budget?.items || []).forEach(b => {
+        content += `"${b.category}",${b.planned},${b.actual}\n`;
+      });
+    } else if (reportName.includes("Goal")) {
+      content += `Goal Name,Target Amount,Current Amount,Monthly Contribution,Achievement Probability,Target Date\n`;
+      (goals?.analysis || []).forEach(g => {
+        content += `"${g.name}",${g.target_amount},${g.current_amount},${g.monthly_contribution},${g.achievement_probability}%,${g.target_date}\n`;
+      });
+    } else {
+      content += `Month,Projected Net Worth\n`;
+      (forecast?.months || []).forEach(m => {
+        content += `"${m.month}",${m.net_worth}\n`;
+      });
+    }
+
+    const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `${reportName.toLowerCase().replace(/\s+/g, "_")}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
   return (
     <>
-      <PageHeader eyebrow="Reports" title="Professional financial reports" subtitle="PDF export is marked planned until implementation is added." />
-      <section className="report-grid">{reports.reports?.map((report) => <Card key={report.name}><FileText /><h2>{report.name}</h2><Badge tone={report.status === "Ready" ? "success" : "warning"}>{report.status}</Badge><p>{report.summary}</p><Button variant={report.status === "Ready" ? "secondary" : "ghost"} disabled={report.status !== "Ready"}>View report</Button></Card>)}</section>
+      <PageHeader 
+        eyebrow="Reports" 
+        title="Professional Financial Reports" 
+        subtitle="Generate, inspect, and export executive-ready financial statements for your records or advisors." 
+        actions={
+          <Button onClick={() => setSelectedReport(reportList[0])}>
+            <FileText size={15} /> Instant Statement
+          </Button>
+        }
+      />
+
+      <section className="report-grid">
+        {reportList.map((report) => (
+          <Card key={report.name}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
+              <div style={{ background: "rgba(59, 130, 246, 0.1)", padding: "10px", borderRadius: "8px", color: "var(--accent)" }}>
+                <FileText size={22} />
+              </div>
+              <Badge tone="success">Ready</Badge>
+            </div>
+            <h2 style={{ fontSize: "16px", marginBottom: "8px" }}>{report.name}</h2>
+            <p className="muted" style={{ fontSize: "13px", minHeight: "40px" }}>{report.summary}</p>
+            <div style={{ display: "flex", gap: "8px", marginTop: "14px" }}>
+              <Button 
+                variant="primary" 
+                style={{ flex: 1 }}
+                onClick={() => setSelectedReport(report)}
+              >
+                View Report
+              </Button>
+              <Button 
+                variant="secondary" 
+                onClick={() => downloadReportCSV(report.name)}
+                title="Download CSV"
+              >
+                <Download size={15} />
+              </Button>
+            </div>
+          </Card>
+        ))}
+      </section>
+
+      {/* Report Modal Viewer */}
+      {selectedReport && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0, 0, 0, 0.75)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 9999,
+          padding: "20px"
+        }}>
+          <Card style={{ 
+            maxWidth: "750px", 
+            width: "100%", 
+            maxHeight: "90vh", 
+            overflowY: "auto", 
+            border: "1px solid var(--accent)",
+            position: "relative"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: "14px", marginBottom: "16px" }}>
+              <div>
+                <Badge tone="ai" style={{ marginBottom: "4px" }}>FinGear AI Statement</Badge>
+                <h2 style={{ margin: 0, fontSize: "20px" }}>{selectedReport.name}</h2>
+                <small className="muted">Generated on {new Date().toLocaleDateString()} for {profile?.name || "Client"}</small>
+              </div>
+              <button 
+                className="icon-button" 
+                onClick={() => setSelectedReport(null)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body Based on Report Type */}
+            {selectedReport.name.includes("Monthly") && (
+              <div style={{ display: "grid", gap: "16px" }}>
+                <div className="metric-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
+                  <div style={{ padding: "12px", background: "var(--surface-hover)", borderRadius: "8px" }}>
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>Monthly Income</span>
+                    <strong style={{ fontSize: "16px", color: "var(--accent-success)" }}>{currency(profile?.monthly_income)}</strong>
+                  </div>
+                  <div style={{ padding: "12px", background: "var(--surface-hover)", borderRadius: "8px" }}>
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>Planned Expenses</span>
+                    <strong style={{ fontSize: "16px", color: "var(--text-primary)" }}>{currency(budget?.planned)}</strong>
+                  </div>
+                  <div style={{ padding: "12px", background: "var(--surface-hover)", borderRadius: "8px" }}>
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>Actual Spending</span>
+                    <strong style={{ fontSize: "16px", color: "var(--accent)" }}>{currency(budget?.actual)}</strong>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "14px", marginBottom: "8px" }}>Category Allocation Ledger</h3>
+                  <div style={{ display: "grid", gap: "6px" }}>
+                    {(budget?.items || []).map((item) => (
+                      <div key={item.category} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: "rgba(255, 255, 255, 0.02)", borderRadius: "6px", border: "1px solid var(--border-color)", fontSize: "13px" }}>
+                        <span>{item.category}</span>
+                        <span><strong>{currency(item.actual)}</strong> / {currency(item.planned)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {selectedReport.name.includes("Health") && (
+              <div style={{ display: "grid", gap: "16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px", background: "var(--surface-hover)", borderRadius: "8px" }}>
+                  <div>
+                    <h3 style={{ margin: 0 }}>Score: {health?.score || 0}/100</h3>
+                    <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>{health?.grade} · {health?.grade_meaning}</span>
+                  </div>
+                  <Badge tone={health?.score >= 70 ? "success" : "warning"}>{health?.data_confidence?.badge || "High Confidence"}</Badge>
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: "14px", marginBottom: "8px" }}>5 Weighted Outcome Dimensions</h3>
+                  <div style={{ display: "grid", gap: "8px" }}>
+                    {(health?.components || []).map((comp) => (
+                      <div key={comp.label} style={{ padding: "10px", background: "rgba(255, 255, 255, 0.02)", borderRadius: "6px", border: "1px solid var(--border-color)", fontSize: "13px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                          <strong>{comp.label} ({comp.weight_pct}%)</strong>
+                          <span>{comp.value} / {comp.max_points} pts</span>
+                        </div>
+                        <p style={{ margin: 0, fontSize: "12px", color: "var(--text-secondary)" }}>{comp.reason}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {selectedReport.name.includes("Forecast") && (
+              <div style={{ display: "grid", gap: "16px" }}>
+                <p className="muted" style={{ margin: 0, fontSize: "13px" }}>
+                  Macro projection over the next 12-24 months based on current savings rate and net cash flow trajectory.
+                </p>
+                <div style={{ maxHeight: "300px", overflowY: "auto", border: "1px solid var(--border-color)", borderRadius: "8px" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                    <thead>
+                      <tr style={{ background: "var(--surface-hover)", textAlign: "left" }}>
+                        <th style={{ padding: "8px 12px" }}>Month</th>
+                        <th style={{ padding: "8px 12px", textAlign: "right" }}>Projected Net Worth</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(forecast?.months || []).slice(0, 12).map((m) => (
+                        <tr key={m.month} style={{ borderTop: "1px solid var(--border-color)" }}>
+                          <td style={{ padding: "8px 12px" }}>{m.month}</td>
+                          <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: 600 }}>{currency(m.net_worth)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {selectedReport.name.includes("Goal") && (
+              <div style={{ display: "grid", gap: "16px" }}>
+                <div style={{ display: "grid", gap: "10px" }}>
+                  {(goals?.analysis || []).map((g) => (
+                    <div key={g.name} style={{ padding: "12px", background: "rgba(255, 255, 255, 0.02)", borderRadius: "8px", border: "1px solid var(--border-color)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                        <strong>{g.name}</strong>
+                        <Badge tone={g.achievement_probability >= 70 ? "success" : "warning"}>{g.achievement_probability}% Feasible</Badge>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                        <span>Target: {currency(g.target_amount)}</span>
+                        <span>Saved: {currency(g.current_amount)}</span>
+                        <span>Due: {g.target_date}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px", paddingTop: "14px", borderTop: "1px solid var(--border-color)" }}>
+              <Button variant="ghost" onClick={() => setSelectedReport(null)}>Close</Button>
+              <Button variant="secondary" onClick={() => downloadReportCSV(selectedReport.name)}>
+                <Download size={15} /> Export CSV
+              </Button>
+              <Button onClick={() => window.print()}>
+                <Printer size={15} /> Print / Save PDF
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </>
   );
 }

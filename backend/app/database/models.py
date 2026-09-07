@@ -26,6 +26,7 @@ class User(Base):
     goals = relationship("Goal", back_populates="user")
     investments = relationship("Investment", back_populates="user")
     debts = relationship("Debt", back_populates="user")
+    recurring_transactions = relationship("RecurringTransaction", back_populates="user")
 
 class FinancialProfile(Base):
     __tablename__ = "financial_profiles"
@@ -281,3 +282,19 @@ class FinancialEvent(Base):
     value = Column(String, nullable=False)
     type = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class RecurringTransaction(Base):
+    __tablename__ = "recurring_transactions"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String, nullable=False)
+    amount = Column(Float, nullable=False)
+    category = Column(String, nullable=False)
+    type = Column(String, default="expense")
+    day_of_month = Column(Integer, default=1)
+    is_active = Column(Boolean, default=True)
+    last_processed_date = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User", back_populates="recurring_transactions")

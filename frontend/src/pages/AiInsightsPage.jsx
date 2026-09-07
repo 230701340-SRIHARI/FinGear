@@ -138,14 +138,14 @@ export function AiInsights() {
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     <span style={{ fontSize: "20px" }}>{meta.icon}</span>
                     <strong>{meta.label}</strong>
-                    <Badge tone={info.phase === 1 ? "success" : "warning"}>Phase {info.phase}</Badge>
+                    <Badge tone={info.phase === 1 ? "success" : "info"}>{info.phase === 1 ? "Active" : "Learning"}</Badge>
                   </div>
                   <div style={{ display: "grid", gap: "6px", fontSize: "13px", color: "var(--text-secondary)", marginTop: "8px" }}>
                     <span>{info.transaction_count} transactions · {info.unique_days} unique days</span>
-                    {info.phase === 0 && info.days_until_phase1 > 0 && (
-                      <span>{info.days_until_phase1} more days for ensemble activation</span>
+                    {info.days_until_phase1 > 0 && (
+                      <span>{info.days_until_phase1} more days for pattern maturity</span>
                     )}
-                    {info.phase === 1 && <span>K-Means: {info.kmeans_trained ? "✓ Trained" : "✗ Pending"} · Autoencoder: 17 params</span>}
+                    {info.phase === 1 && <span>Ensemble Model: Active · 17 parameters</span>}
                   </div>
                   <Progress
                     value={Math.min((info.unique_days / 8) * 100, 100)}
@@ -177,7 +177,6 @@ export function AiInsights() {
                   </div>
                   <div className="anomaly-card-details">
                     <span><strong>Category:</strong> {txn.category} → {anom.universe}</span>
-                    <span><strong>Phase:</strong> {anom.phase}</span>
                     <span><strong>Score:</strong> {(anom.score * 100).toFixed(1)}%</span>
                     {anom.phase === 1 && (
                       <>
@@ -206,20 +205,6 @@ export function AiInsights() {
           />
         )}
       </Card>
-
-      {/* ── Model Transparency ───────────────────────────────────────── */}
-      {aiStatus?.weight_info && (
-        <Card>
-          <div className="section-title"><Database /> Weight Persistence</div>
-          <div className="state-list">
-            <span>Weight file: {aiStatus.weight_info.exists ? "✓ Saved" : "✗ Not created"}</span>
-            {aiStatus.weight_info.total_params && <span>Total parameters: {aiStatus.weight_info.total_params} floats</span>}
-            {aiStatus.weight_info.forecast_param_count && <span>Forecast weights: {aiStatus.weight_info.forecast_param_count} (7W + 1b)</span>}
-            {aiStatus.weight_info.multiverse_categories && <span>Multiverse categories: {aiStatus.weight_info.multiverse_categories.join(", ")}</span>}
-            {aiStatus.weight_info.file_size_bytes && <span>File size: {aiStatus.weight_info.file_size_bytes} bytes</span>}
-          </div>
-        </Card>
-      )}
 
       <QuickLinks links={[
         { to: "/transactions", icon: Activity, label: "Transactions", detail: "Add data to train models" },
