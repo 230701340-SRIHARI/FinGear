@@ -449,15 +449,37 @@ export function FinanceProvider({ children }) {
     }
   }
 
-  async function prepayDebt(id, amount) {
+  async function payDebtEmi(id, payload = {}) {
     setError("");
     try {
-      const res = await api.prepayDebt(id, amount);
+      const res = await api.payDebtEmi(id, payload);
+      await refresh();
+      return res;
+    } catch (err) {
+      setError(err.message || "Could not record monthly EMI payment.");
+      throw err;
+    }
+  }
+
+  async function prepayDebt(id, amount, strategy = "reduce_tenure") {
+    setError("");
+    try {
+      const res = await api.prepayDebt(id, amount, strategy);
       await refresh();
       return res;
     } catch (err) {
       setError(err.message || "Could not apply debt prepayment.");
       throw err;
+    }
+  }
+
+  async function processMonthlyDebts() {
+    try {
+      const res = await api.processMonthlyDebts();
+      await refresh();
+      return res;
+    } catch (err) {
+      console.error("Failed to process monthly debts:", err);
     }
   }
 
@@ -486,7 +508,9 @@ export function FinanceProvider({ children }) {
       addDebt,
       updateDebt,
       deleteDebt,
+      payDebtEmi,
       prepayDebt,
+      processMonthlyDebts,
       fetchForecast,
       runSimulation,
       askCopilot,

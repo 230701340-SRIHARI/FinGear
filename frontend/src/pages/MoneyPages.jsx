@@ -1,4 +1,4 @@
-import { Activity, Calendar, Check, CheckCircle2, CircleDollarSign, CreditCard, FileText, FileUp, Goal as GoalIcon, HelpCircle, Landmark, LineChart, MoreVertical, Pencil, Play, Plus, PlusCircle, RefreshCw, RotateCcw, ShieldAlert, SlidersHorizontal, Sparkles, Trash, Trash2, TrendingDown, TrendingUp, UploadCloud, WalletCards } from "lucide-react";
+import { Activity, Calculator, Calendar, Check, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clock, CreditCard, FileText, FileUp, Goal as GoalIcon, HelpCircle, Info, Landmark, LineChart, MoreVertical, Pencil, Play, Plus, PlusCircle, RefreshCw, RotateCcw, ShieldAlert, SlidersHorizontal, Sparkles, Trash, Trash2, TrendingDown, TrendingUp, UploadCloud, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AllocationChart, NetWorthChart, getAssetColor } from "../components/charts";
@@ -1747,58 +1747,437 @@ export function Investments() {
   );
 }
 
+function calculateStandardEmi(principal, annualRate, tenureMonths) {
+  const p = Number(principal) || 0;
+  const r = (Number(annualRate) || 0) / 1200;
+  const n = Number(tenureMonths) || 1;
+  if (p <= 0 || n <= 0) return 0;
+  if (r === 0) return Math.round(p / n);
+  const emi = p * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+  return Math.round(emi);
+}
+
+function computeMonthsBetween(startDateStr, endDateStr) {
+  if (!startDateStr || !endDateStr) return 0;
+  const start = new Date(startDateStr);
+  const end = new Date(endDateStr);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
+  const diffDays = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+  if (diffDays <= 0) return 1;
+  return Math.max(1, Math.round(diffDays / 30.4375));
+}
+
+function addMonthsToDate(startDateStr, months) {
+  if (!startDateStr) return "";
+  const d = new Date(startDateStr);
+  if (isNaN(d.getTime())) return "";
+  const m = Number(months) || 0;
+  const target = new Date(d);
+  target.setMonth(target.getMonth() + m);
+  const year = target.getFullYear();
+  const month = String(target.getMonth() + 1).padStart(2, "0");
+  const day = String(target.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function deriveLoanTimeline(startDateStr, endDateStr, fallbackTenure = 12) {
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  const start = startDateStr ? new Date(startDateStr) : today;
+  const end = endDateStr ? new Date(endDateStr) : null;
+
+  let totalTenure = Number(fallbackTenure) || 12;
+  if (startDateStr && endDateStr) {
+    totalTenure = computeMonthsBetween(startDateStr, endDateStr);
+  }
+
+  let elapsed = 0;
+  let remaining = totalTenure;
+
+  if (start > today) {
+    elapsed = 0;
+    remaining = totalTenure;
+  } else {
+    elapsed = Math.min(totalTenure, computeMonthsBetween(startDateStr, todayStr));
+    if (end && today >= end) {
+      remaining = 0;
+      elapsed = totalTenure;
+    } else {
+      remaining = Math.max(0, totalTenure - elapsed);
+    }
+  }
+
+  return { totalTenure, elapsed, remaining };
+}
+
+function getMonthsDifference(startDateStr) {
+  if (!startDateStr) return 0;
+  const start = new Date(startDateStr);
+  const now = new Date();
+  if (isNaN(start.getTime())) return 0;
+  const diffYears = now.getFullYear() - start.getFullYear();
+  const diffMonths = now.getMonth() - start.getMonth();
+  return Math.max(0, diffYears * 12 + diffMonths);
+}
+
+function getProjectedEndDate(remainingMonths) {
+  const months = Number(remainingMonths) || 0;
+  const target = new Date();
+  target.setMonth(target.getMonth() + months);
+  return target.toLocaleDateString("en-IN", { month: "short", year: "numeric" });
+}
+
+function formatReadableDate(dateStr) {
+  if (!dateStr) return "N/A";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString("en-IN", { month: "short", year: "numeric" });
+}
+
+function getOrdinal(n) {
+  const num = Number(n) || 0;
+  const j = num % 10;
+  const k = num % 100;
+  if (j === 1 && k !== 11) {
+    return `${num}st`;
+  }
+  if (j === 2 && k !== 12) {
+    return `${num}nd`;
+  }
+  if (j === 3 && k !== 13) {
+    return `${num}rd`;
+  }
+  return `${num}th`;
+}
+
+function generateAmortizationPreview(outstanding, annualRate, emi, maxMonths = 360) {
+  let bal = Math.round(Number(outstanding) || 0);
+  const r = (Number(annualRate) || 0) / 1200;
+  const monthlyEmi = Math.round(Number(emi) || 0);
+  const rows = [];
+  const maxCount = Math.max(1, Math.min(480, Number(maxMonths) || 360));
+
+  const today = new Date();
+  const baseYear = today.getFullYear();
+  const baseMonth = today.getMonth();
+
+  for (let i = 1; i <= maxCount && bal > 0; i++) {
+    const interest = Math.round(bal * r);
+    let principal = Math.max(0, monthlyEmi - interest);
+    let currentEmi = monthlyEmi;
+
+    const rowDate = new Date(baseYear, baseMonth + i, 1);
+    const monthName = rowDate.toLocaleDateString("en-IN", { month: "short", year: "numeric" });
+    const fullMonthName = rowDate.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+    const ordinal = getOrdinal(i);
+
+    // Final month payoff check: when remaining balance is within monthly principal capacity
+    if (bal <= principal || (bal + interest) <= monthlyEmi) {
+      principal = bal;
+      currentEmi = principal + interest;
+      const startBal = bal;
+      bal = 0;
+
+      rows.push({
+        month: i,
+        ordinal,
+        monthName,
+        fullMonthName,
+        label: `${ordinal} Month (${monthName})`,
+        startBal,
+        emi: currentEmi,
+        interest,
+        principal,
+        endBal: 0,
+        isFinal: true,
+      });
+      break;
+    }
+
+    const startBal = bal;
+    const endBal = Math.max(0, bal - principal);
+    bal = endBal;
+
+    rows.push({
+      month: i,
+      ordinal,
+      monthName,
+      fullMonthName,
+      label: `${ordinal} Month (${monthName})`,
+      startBal,
+      emi: currentEmi,
+      interest,
+      principal,
+      endBal,
+      isFinal: false,
+    });
+  }
+  return rows;
+}
+
 export function Debt() {
-  const { debt, addDebt, deleteDebt, prepayDebt } = useFinance();
+  const { debt, addDebt, updateDebt, deleteDebt, payDebtEmi, prepayDebt, processMonthlyDebts } = useFinance();
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
+  // Pay Monthly EMI state
+  const [payEmiTarget, setPayEmiTarget] = useState(null);
+  const [payEmiAmount, setPayEmiAmount] = useState(0);
+  const [payingEmi, setPayingEmi] = useState(false);
+
+  // Prepayment state
   const [prepayTarget, setPrepayTarget] = useState(null);
   const [prepayAmount, setPrepayAmount] = useState(10000);
+  const [prepayStrategy, setPrepayStrategy] = useState("reduce_tenure");
   const [prepaying, setPrepaying] = useState(false);
-  const [adding, setAdding] = useState(false);
+
+  // Amortization modal state
+  const [activeAmortization, setActiveAmortization] = useState(null);
+
+  // General processing & toast state
+  const [savingDebt, setSavingDebt] = useState(false);
+  const [autoProcessing, setAutoProcessing] = useState(false);
   const [feedbackToast, setFeedbackToast] = useState("");
+
+  const currentYearMonth = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+
+  const currentMonthName = useMemo(() => {
+    return new Date().toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  }, []);
+
   const [debtForm, setDebtForm] = useState({
     name: "",
+    loan_type: "Personal Loan",
+    lender: "",
     principal: 500000,
     outstanding: 400000,
     interest_rate: 10.5,
-    emi: 12000,
-    remaining_months: 36,
+    total_tenure_months: 36,
+    tenure_elapsed_months: 12,
+    remaining_months: 24,
+    emi: 16250,
+    start_date: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    end_date: addMonthsToDate(new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10), 36),
+    emi_day: 5,
+    auto_deduct: true,
   });
 
   const items = debt?.items || [];
   const payoff = useMemo(() => `${debt?.debt_free_months || 0} months`, [debt]);
 
-  async function handleAddDebt(e) {
-    e.preventDefault();
-    if (!debtForm.name.trim()) return;
-    setAdding(true);
-    try {
-      await addDebt({
-        name: debtForm.name.trim(),
-        principal: Number(debtForm.principal) || 0,
-        outstanding: Number(debtForm.outstanding) || Number(debtForm.principal) || 0,
-        interest_rate: Number(debtForm.interest_rate) || 0,
-        emi: Number(debtForm.emi) || 0,
-        remaining_months: Number(debtForm.remaining_months) || 12,
-      });
-      setShowAddModal(false);
-      setFeedbackToast(`Added "${debtForm.name.trim()}" successfully! Total liabilities updated.`);
-      setTimeout(() => setFeedbackToast(""), 4000);
-    } catch (err) {
-      alert("Failed to add debt: " + err.message);
-    } finally {
-      setAdding(false);
+  // Open Add Loan Modal with initial calculations
+  function openAddModal() {
+    setEditingId(null);
+    const defPrincipal = 500000;
+    const defRate = 10.5;
+    const defTenure = 36;
+    const startDt = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const endDt = addMonthsToDate(startDt, defTenure);
+    const { elapsed, remaining, totalTenure } = deriveLoanTimeline(startDt, endDt, defTenure);
+    const defEmi = calculateStandardEmi(defPrincipal, defRate, totalTenure);
+
+    setDebtForm({
+      name: "",
+      loan_type: "Personal Loan",
+      lender: "",
+      principal: defPrincipal,
+      outstanding: Math.round(defPrincipal * 0.72),
+      interest_rate: defRate,
+      total_tenure_months: totalTenure,
+      tenure_elapsed_months: elapsed,
+      remaining_months: remaining,
+      emi: defEmi,
+      start_date: startDt,
+      end_date: endDt,
+      emi_day: 5,
+      auto_deduct: true,
+    });
+    setShowAddModal(true);
+  }
+
+  // Open Edit Loan Modal
+  function handleStartEdit(item) {
+    setEditingId(item.id);
+    const total = Number(item.total_tenure_months) || (Number(item.tenure_elapsed_months || 0) + Number(item.remaining_months || 12)) || 12;
+    const startDt = item.start_date || new Date().toISOString().slice(0, 10);
+    const endDt = item.end_date || addMonthsToDate(startDt, total);
+    const { elapsed, remaining, totalTenure } = deriveLoanTimeline(startDt, endDt, total);
+
+    setDebtForm({
+      name: item.name || "",
+      loan_type: item.loan_type || "Personal Loan",
+      lender: item.lender || "",
+      principal: item.principal || 0,
+      outstanding: item.outstanding || 0,
+      interest_rate: item.interest_rate || 10.0,
+      total_tenure_months: totalTenure,
+      tenure_elapsed_months: elapsed,
+      remaining_months: remaining,
+      emi: item.emi || 0,
+      start_date: startDt,
+      end_date: endDt,
+      emi_day: item.emi_day || 5,
+      auto_deduct: item.auto_deduct !== false,
+    });
+    setShowAddModal(true);
+  }
+
+  // Handle auto-calculating EMI in form
+  function handleAutoCalculateEmi() {
+    const calc = calculateStandardEmi(debtForm.principal, debtForm.interest_rate, debtForm.total_tenure_months);
+    if (calc > 0) {
+      setDebtForm((prev) => ({ ...prev, emi: calc }));
+      setFeedbackToast(`Calculated standard monthly EMI: ${currency(calc)}`);
+      setTimeout(() => setFeedbackToast(""), 3500);
     }
   }
 
+  // Handle start date change
+  function handleStartDateChange(dateVal) {
+    const startDt = dateVal;
+    let endDt = debtForm.end_date;
+    let total = Number(debtForm.total_tenure_months) || 12;
+
+    if (endDt && new Date(endDt) > new Date(startDt)) {
+      total = computeMonthsBetween(startDt, endDt);
+    } else {
+      endDt = addMonthsToDate(startDt, total);
+    }
+
+    const { elapsed, remaining, totalTenure } = deriveLoanTimeline(startDt, endDt, total);
+    const calcEmi = calculateStandardEmi(debtForm.principal, debtForm.interest_rate, totalTenure);
+
+    setDebtForm((prev) => ({
+      ...prev,
+      start_date: startDt,
+      end_date: endDt,
+      total_tenure_months: totalTenure,
+      tenure_elapsed_months: elapsed,
+      remaining_months: remaining,
+      emi: calcEmi > 0 ? calcEmi : prev.emi,
+    }));
+  }
+
+  // Handle end date change
+  function handleEndDateChange(dateVal) {
+    const endDt = dateVal;
+    const startDt = debtForm.start_date || new Date().toISOString().slice(0, 10);
+    const totalTenure = computeMonthsBetween(startDt, endDt);
+    const { elapsed, remaining } = deriveLoanTimeline(startDt, endDt, totalTenure);
+    const calcEmi = calculateStandardEmi(debtForm.principal, debtForm.interest_rate, totalTenure);
+
+    setDebtForm((prev) => ({
+      ...prev,
+      end_date: endDt,
+      total_tenure_months: totalTenure,
+      tenure_elapsed_months: elapsed,
+      remaining_months: remaining,
+      emi: calcEmi > 0 ? calcEmi : prev.emi,
+    }));
+  }
+
+  // Handle total tenure change (e.g. preset clicked or typed)
+  function handleTotalTenureChange(totalMonths) {
+    const total = Math.max(1, Number(totalMonths) || 1);
+    const startDt = debtForm.start_date || new Date().toISOString().slice(0, 10);
+    const endDt = addMonthsToDate(startDt, total);
+    const { elapsed, remaining, totalTenure } = deriveLoanTimeline(startDt, endDt, total);
+    const calcEmi = calculateStandardEmi(debtForm.principal, debtForm.interest_rate, totalTenure);
+
+    setDebtForm((prev) => ({
+      ...prev,
+      total_tenure_months: totalTenure,
+      end_date: endDt,
+      tenure_elapsed_months: elapsed,
+      remaining_months: remaining,
+      emi: calcEmi > 0 ? calcEmi : prev.emi,
+    }));
+  }
+
+  // Submit Add or Edit Loan
+  async function handleSaveDebt(e) {
+    e.preventDefault();
+    if (!debtForm.name.trim()) return;
+    setSavingDebt(true);
+    try {
+      const payload = {
+        name: debtForm.name.trim(),
+        loan_type: debtForm.loan_type,
+        lender: debtForm.lender.trim(),
+        principal: Number(debtForm.principal) || 0,
+        outstanding: Number(debtForm.outstanding) || Number(debtForm.principal) || 0,
+        interest_rate: Number(debtForm.interest_rate) || 0,
+        total_tenure_months: Number(debtForm.total_tenure_months) || 12,
+        tenure_elapsed_months: Number(debtForm.tenure_elapsed_months) || 0,
+        remaining_months: Number(debtForm.remaining_months) || 12,
+        emi: Number(debtForm.emi) || 0,
+        start_date: debtForm.start_date,
+        end_date: debtForm.end_date || addMonthsToDate(debtForm.start_date, debtForm.total_tenure_months),
+        emi_day: Number(debtForm.emi_day) || 5,
+        auto_deduct: Boolean(debtForm.auto_deduct),
+        status: Number(debtForm.outstanding) <= 0 ? "paid_off" : "active",
+      };
+
+      if (editingId) {
+        await updateDebt(editingId, payload);
+        setFeedbackToast(`Updated "${debtForm.name.trim()}" successfully!`);
+      } else {
+        await addDebt(payload);
+        setFeedbackToast(`Added "${debtForm.name.trim()}" successfully! Ledger and liabilities updated.`);
+      }
+      setShowAddModal(false);
+      setEditingId(null);
+      setTimeout(() => setFeedbackToast(""), 4000);
+    } catch (err) {
+      alert("Failed to save loan: " + err.message);
+    } finally {
+      setSavingDebt(false);
+    }
+  }
+
+  // Open Pay Monthly EMI modal
+  function openPayEmiModal(item) {
+    setPayEmiTarget(item);
+    setPayEmiAmount(Number(item.emi) || 0);
+  }
+
+  // Execute Pay Monthly EMI
+  async function handleExecutePayEmi(e) {
+    e.preventDefault();
+    if (!payEmiTarget || Number(payEmiAmount) <= 0) return;
+    setPayingEmi(true);
+    try {
+      const res = await payDebtEmi(payEmiTarget.id, {
+        amount: Number(payEmiAmount),
+        date: new Date().toISOString().slice(0, 10),
+      });
+      const receipt = res?.receipt || {};
+      setFeedbackToast(
+        `Recorded ${currency(payEmiAmount)} EMI payment for "${payEmiTarget.name}"! Principal reduced by ${currency(receipt.principal_reduction || 0)} (Interest: ${currency(receipt.interest_portion || 0)}).`
+      );
+      setPayEmiTarget(null);
+      setTimeout(() => setFeedbackToast(""), 5000);
+    } catch (err) {
+      alert("Failed to record EMI payment: " + err.message);
+    } finally {
+      setPayingEmi(false);
+    }
+  }
+
+  // Execute Principal Prepayment
   async function handlePrepay(e) {
     e.preventDefault();
     if (!prepayTarget || Number(prepayAmount) <= 0) return;
     setPrepaying(true);
     try {
-      await prepayDebt(prepayTarget.id, Number(prepayAmount));
-      setFeedbackToast(`Applied ₹${Number(prepayAmount).toLocaleString("en-IN")} principal prepayment to "${prepayTarget.name}"!`);
+      await prepayDebt(prepayTarget.id, Number(prepayAmount), prepayStrategy);
+      const stratMsg = prepayStrategy === "reduce_tenure" ? "shortened loan tenure" : "recalculated lower monthly EMI";
+      setFeedbackToast(`Applied ${currency(prepayAmount)} prepayment to "${prepayTarget.name}" and ${stratMsg}!`);
       setPrepayTarget(null);
-      setTimeout(() => setFeedbackToast(""), 4000);
+      setTimeout(() => setFeedbackToast(""), 5000);
     } catch (err) {
       alert("Failed to apply prepayment: " + err.message);
     } finally {
@@ -1806,8 +2185,28 @@ export function Debt() {
     }
   }
 
+  // Trigger manual run of monthly auto-processing
+  async function handleProcessMonthly() {
+    setAutoProcessing(true);
+    try {
+      const res = await processMonthlyDebts();
+      const count = res?.processed?.length || 0;
+      if (count > 0) {
+        setFeedbackToast(`Auto-processed ${count} scheduled monthly loan EMI payments!`);
+      } else {
+        setFeedbackToast("All active loans are already up-to-date for the current month!");
+      }
+      setTimeout(() => setFeedbackToast(""), 4500);
+    } catch (err) {
+      alert("Failed to process monthly debts: " + err.message);
+    } finally {
+      setAutoProcessing(false);
+    }
+  }
+
+  // Delete Loan
   async function handleDelete(item) {
-    if (!window.confirm(`Are you sure you want to remove "${item.name}"?`)) return;
+    if (!window.confirm(`Are you sure you want to remove "${item.name}"? This will update your total liabilities.`)) return;
     try {
       await deleteDebt(item.id);
       setFeedbackToast(`Removed "${item.name}". Total liabilities updated.`);
@@ -1820,95 +2219,380 @@ export function Debt() {
   return (
     <>
       <PageHeader
-        eyebrow="Debt Management"
-        title="Liabilities & EMI Payoff Control"
-        subtitle="Track loan obligations, interest burdens, and tailored accelerated payoff recommendations."
+        eyebrow="Debt & Loan Management"
+        title="Loan Obligations & Monthly EMI Control"
+        subtitle="Manage loan tenures, record scheduled monthly EMI payments, and automate monthly balance progression."
         actions={
-          <Button onClick={() => {
-            setDebtForm({ name: "", principal: 500000, outstanding: 400000, interest_rate: 10.5, emi: 12000, remaining_months: 36 });
-            setShowAddModal(true);
-          }}>
-            <Plus size={16} /> Add Loan / Liability
-          </Button>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <Button variant="secondary" size="sm" onClick={handleProcessMonthly} disabled={autoProcessing} title="Check and advance monthly loan EMIs due this month">
+              <RefreshCw size={14} className={autoProcessing ? "spin" : ""} /> {autoProcessing ? "Processing..." : "Run Monthly Rollover"}
+            </Button>
+            <Button onClick={openAddModal}>
+              <Plus size={16} /> Add Loan / Liability
+            </Button>
+          </div>
         }
       />
 
       {feedbackToast && (
-        <div style={{ background: "rgba(16, 185, 129, 0.12)", border: "1px solid var(--accent-success)", color: "var(--accent-success)", padding: "10px 14px", borderRadius: "8px", marginBottom: "16px", fontSize: "14px", fontWeight: 600 }}>
-          {feedbackToast}
+        <div style={{ background: "rgba(16, 185, 129, 0.12)", border: "1px solid var(--accent-success)", color: "var(--accent-success)", padding: "12px 16px", borderRadius: "8px", marginBottom: "16px", fontSize: "14px", fontWeight: 600, display: "flex", alignItems: "center", gap: "8px" }}>
+          <CheckCircle2 size={18} /> {feedbackToast}
         </div>
       )}
 
+      {/* Top Metric Cards */}
       <section className="metric-grid">
-        <MetricCard icon={<CreditCard />} label="Total Debt" value={currency(debt?.total || 0)} detail="Outstanding balance" tone="warning" />
-        <MetricCard icon={<Calendar />} label="Monthly EMI" value={currency(debt?.monthly_emi || 0)} detail="Total monthly outflow" tone="info" />
-        <MetricCard icon={<Activity />} label="Debt-to-Income" value={percent(debt?.debt_to_income || 0)} detail="Safer range is below 30%" tone="success" />
-        <MetricCard icon={<GoalIcon />} label="Est. Debt Free" value={payoff} detail="Based on current schedule" tone="ai" />
+        <MetricCard icon={<CreditCard />} label="Total Outstanding Debt" value={currency(debt?.total || 0)} detail="Active liability balance" tone="warning" />
+        <MetricCard icon={<Calendar />} label="Total Monthly Outflow" value={currency(debt?.monthly_emi || 0)} detail="Scheduled monthly EMIs" tone="info" />
+        <MetricCard icon={<Activity />} label="Debt-to-Income (DTI)" value={percent(debt?.debt_to_income || 0)} detail="Safer range is below 30%" tone={debt?.debt_to_income > 0.4 ? "danger" : "success"} />
+        <MetricCard icon={<GoalIcon />} label="Estimated Debt-Free" value={payoff} detail="Based on active repayment schedule" tone="ai" />
       </section>
 
-      {/* Add Debt Form Card */}
+      {/* Auto-Monthly Progress Banner */}
+      <Card style={{ marginBottom: "20px", background: "linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(16, 185, 129, 0.05))", border: "1px solid rgba(59, 130, 246, 0.2)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ padding: "8px", borderRadius: "8px", background: "rgba(59, 130, 246, 0.1)", color: "var(--accent)" }}>
+              <Clock size={20} />
+            </div>
+            <div>
+              <strong style={{ fontSize: "14px", color: "var(--text-primary)", display: "block" }}>
+                Automatic Monthly Progression Active for {currentMonthName}
+              </strong>
+              <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                Loans with auto-deduct enabled automatically deduct their monthly EMI on their designated due date (1st–28th) and advance remaining tenure.
+              </span>
+            </div>
+          </div>
+          <Button variant="ghost" size="sm" onClick={handleProcessMonthly} disabled={autoProcessing} style={{ fontSize: "12px" }}>
+            <RefreshCw size={13} className={autoProcessing ? "spin" : ""} /> Check Monthly Status
+          </Button>
+        </div>
+      </Card>
+
+      {/* Add / Edit Loan Modal */}
       {showAddModal && (
-        <Card style={{ marginBottom: "24px", border: "1px solid var(--accent)" }}>
-          <div className="section-title"><CreditCard /> Add Loan or Liability</div>
-          <form onSubmit={handleAddDebt} style={{ display: "grid", gap: "14px", marginTop: "14px" }}>
+        <Card style={{ marginBottom: "24px", border: "1px solid var(--accent)", boxShadow: "0 8px 30px rgba(0,0,0,0.15)" }}>
+          <div className="section-title">
+            <CreditCard /> {editingId ? "Edit Loan Details & Repayment Schedule" : "Add Loan / Debt Obligation"}
+          </div>
+          <p className="muted" style={{ margin: "-4px 0 16px", fontSize: "13px" }}>
+            Configure your loan parameters. Enter how long the loan has been going, its total tenure, and monthly EMI. The system will track remaining tenure and auto-update every month.
+          </p>
+
+          <form onSubmit={handleSaveDebt} style={{ display: "grid", gap: "16px" }}>
+            {/* Basic Info */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
               <Field label="Loan / Debt Name">
                 <input
                   required
-                  placeholder="e.g. HDFC Home Loan, Car Loan, Education Loan"
+                  placeholder="e.g. HDFC Home Loan, SBI Car Loan"
                   value={debtForm.name}
                   onChange={(e) => setDebtForm({ ...debtForm, name: e.target.value })}
                 />
               </Field>
-              <Field label="Original Principal (₹)">
-                <NumberInput
-                  required
-                  value={debtForm.principal}
-                  onChange={(val) => setDebtForm({ ...debtForm, principal: val, outstanding: debtForm.outstanding || val })}
-                  min="1000"
-                />
+
+              <Field label="Loan Category">
+                <select
+                  value={debtForm.loan_type}
+                  onChange={(e) => setDebtForm({ ...debtForm, loan_type: e.target.value })}
+                >
+                  <option value="Personal Loan">Personal Loan</option>
+                  <option value="Home Loan">Home Loan</option>
+                  <option value="Car / Vehicle Loan">Car / Vehicle Loan</option>
+                  <option value="Education Loan">Education Loan</option>
+                  <option value="Credit Card EMI">Credit Card EMI</option>
+                  <option value="Gold Loan">Gold Loan</option>
+                  <option value="Business Loan">Business Loan</option>
+                </select>
               </Field>
-              <Field label="Current Outstanding (₹)">
-                <NumberInput
-                  required
-                  value={debtForm.outstanding}
-                  onChange={(val) => setDebtForm({ ...debtForm, outstanding: val })}
-                  min="0"
+
+              <Field label="Lender / Bank Institution">
+                <input
+                  placeholder="e.g. HDFC Bank, SBI, ICICI, Bajaj"
+                  value={debtForm.lender}
+                  onChange={(e) => setDebtForm({ ...debtForm, lender: e.target.value })}
                 />
               </Field>
             </div>
+
+            {/* Financial Amounts */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
-              <Field label="Interest Rate (% p.a.)">
+              <Field label="Original Principal Amount (₹)">
+                <NumberInput
+                  required
+                  min="1000"
+                  value={debtForm.principal}
+                  onChange={(val) => {
+                    const p = Number(val) || 0;
+                    const emi = calculateStandardEmi(p, debtForm.interest_rate, debtForm.total_tenure_months);
+                    setDebtForm({ ...debtForm, principal: p, emi: emi > 0 ? emi : debtForm.emi });
+                  }}
+                />
+              </Field>
+
+              <Field label="Annual Interest Rate (% p.a.)">
                 <input
                   type="number"
-                  step="0.1"
+                  step="0.05"
                   required
                   value={debtForm.interest_rate}
-                  onChange={(e) => setDebtForm({ ...debtForm, interest_rate: e.target.value })}
+                  onChange={(e) => {
+                    const rate = Number(e.target.value) || 0;
+                    const emi = calculateStandardEmi(debtForm.principal, rate, debtForm.total_tenure_months);
+                    setDebtForm({ ...debtForm, interest_rate: rate, emi: emi > 0 ? emi : debtForm.emi });
+                  }}
                 />
               </Field>
-              <Field label="Monthly EMI (₹)">
+
+              <Field label="Current Outstanding Balance (₹)">
                 <NumberInput
                   required
-                  value={debtForm.emi}
-                  onChange={(val) => setDebtForm({ ...debtForm, emi: val })}
-                  min="100"
-                />
-              </Field>
-              <Field label="Remaining Tenure (Months)">
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  value={debtForm.remaining_months}
-                  onChange={(e) => setDebtForm({ ...debtForm, remaining_months: e.target.value })}
+                  min="0"
+                  value={debtForm.outstanding}
+                  onChange={(val) => setDebtForm({ ...debtForm, outstanding: val })}
                 />
               </Field>
             </div>
+
+            {/* Tenure & Timeline: Exact Dates, Presets & Live Tracking */}
+            <div style={{ background: "var(--surface-hover)", padding: "16px", borderRadius: "10px", border: "1px solid var(--border-color)", display: "grid", gap: "14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+                <strong style={{ fontSize: "14px", color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <Clock size={16} color="var(--accent)" /> Loan Tenure & Timeline Tracking
+                </strong>
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontSize: "11px", color: "var(--text-muted)", marginRight: "2px" }}>Tenure Presets:</span>
+                  {[6, 12, 24, 36, 60, 84, 120, 180, 240].map((m) => {
+                    const isSelected = Number(debtForm.total_tenure_months) === m;
+                    const label = m < 12 ? `${m}m` : `${m / 12}y`;
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => handleTotalTenureChange(m)}
+                        style={{
+                          padding: "3px 9px",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          borderRadius: "6px",
+                          border: isSelected ? "1px solid var(--accent)" : "1px solid var(--border-color)",
+                          background: isSelected ? "var(--accent)" : "var(--bg-surface)",
+                          color: isSelected ? "#fff" : "var(--text-secondary)",
+                          cursor: "pointer",
+                          transition: "all 0.15s ease"
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Exact Dates & Total Tenure in 3 Columns */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
+                <Field label="Loan Start Date">
+                  <input
+                    type="date"
+                    required
+                    value={debtForm.start_date}
+                    onChange={(e) => handleStartDateChange(e.target.value)}
+                  />
+                </Field>
+
+                <Field label="Loan End Date (Payoff Date)">
+                  <input
+                    type="date"
+                    required
+                    value={debtForm.end_date}
+                    onChange={(e) => handleEndDateChange(e.target.value)}
+                  />
+                </Field>
+
+                <Field label="Total Loan Tenure (Months)">
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={debtForm.total_tenure_months}
+                    onChange={(e) => handleTotalTenureChange(e.target.value)}
+                  />
+                </Field>
+              </div>
+
+              {/* Live Timeline Computed Status & Progress */}
+              <div style={{ background: "var(--bg-surface)", padding: "12px 14px", borderRadius: "8px", border: "1px solid var(--border-color)", display: "grid", gap: "8px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", fontSize: "12px" }}>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                    <Badge tone="info">
+                      Elapsed: {debtForm.tenure_elapsed_months} months ({debtForm.tenure_elapsed_months} EMIs already paid)
+                    </Badge>
+                    <Badge tone="warning">
+                      Remaining: {debtForm.remaining_months} months (Est. payoff: {formatReadableDate(debtForm.end_date) || getProjectedEndDate(debtForm.remaining_months)})
+                    </Badge>
+                  </div>
+                  <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>
+                    {debtForm.total_tenure_months > 0
+                      ? `${Math.min(100, Math.round(((debtForm.tenure_elapsed_months || 0) / debtForm.total_tenure_months) * 100))}% elapsed`
+                      : "0%"}
+                  </span>
+                </div>
+                <Progress
+                  value={debtForm.total_tenure_months > 0 ? ((debtForm.tenure_elapsed_months || 0) / debtForm.total_tenure_months) * 100 : 0}
+                  tone={debtForm.remaining_months === 0 ? "success" : "info"}
+                />
+              </div>
+            </div>
+
+            {/* Monthly EMI & Automation */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "14px", alignItems: "flex-end" }}>
+              <Field label="Monthly EMI (₹)">
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+                    <NumberInput
+                      required
+                      min="100"
+                      value={debtForm.emi}
+                      onChange={(val) => setDebtForm({ ...debtForm, emi: val })}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={handleAutoCalculateEmi}
+                    title="Calculate exact standard EMI from principal, rate & tenure"
+                    style={{
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                      minHeight: "44px",
+                      height: "44px",
+                      padding: "0 14px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px",
+                      fontSize: "13px",
+                      fontWeight: 600
+                    }}
+                  >
+                    <Calculator size={15} /> Auto-Calculate
+                  </button>
+                </div>
+              </Field>
+
+              <Field label="EMI Due Day of Month (1 - 28)">
+                <NumberInput
+                  min="1"
+                  max="28"
+                  required
+                  value={debtForm.emi_day}
+                  onChange={(val) => setDebtForm({ ...debtForm, emi_day: Math.min(28, Math.max(1, Number(val) || 5)) })}
+                />
+              </Field>
+
+              <div style={{ paddingBottom: "10px" }}>
+                <label style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  color: "var(--text-primary)",
+                  userSelect: "none",
+                  lineHeight: "1.4"
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={debtForm.auto_deduct}
+                    onChange={(e) => setDebtForm({ ...debtForm, auto_deduct: e.target.checked })}
+                    style={{
+                      width: "18px",
+                      height: "18px",
+                      minHeight: "18px",
+                      maxHeight: "18px",
+                      accentColor: "var(--accent)",
+                      cursor: "pointer",
+                      margin: 0,
+                      flexShrink: 0
+                    }}
+                  />
+                  <span>Automatically update tenure & log monthly EMI on due date</span>
+                </label>
+              </div>
+            </div>
+
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "8px" }}>
-              <Button type="button" variant="ghost" onClick={() => setShowAddModal(false)} disabled={adding}>Cancel</Button>
-              <Button type="submit" disabled={adding}>
-                {adding ? "Saving Loan..." : "Save Loan"}
+              <Button type="button" variant="ghost" onClick={() => { setShowAddModal(false); setEditingId(null); }} disabled={savingDebt}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={savingDebt}>
+                {savingDebt ? "Saving..." : editingId ? "Update Loan" : "Save Loan Obligation"}
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {/* Pay Monthly EMI Modal */}
+      {payEmiTarget && (
+        <Card style={{ marginBottom: "24px", border: "1px solid var(--accent-success)", background: "rgba(16, 185, 129, 0.04)" }}>
+          <div className="section-title">
+            <CreditCard color="var(--accent-success)" /> Record Scheduled Monthly EMI Payment: {payEmiTarget.name}
+          </div>
+          <p className="muted" style={{ margin: "4px 0 16px", fontSize: "13px" }}>
+            Record this month's loan installment. FinGear calculates the exact interest and principal repayment breakdown, updates your remaining balance, and logs the payment into your expense ledger.
+          </p>
+
+          <form onSubmit={handleExecutePayEmi} style={{ display: "grid", gap: "16px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px", background: "var(--surface-hover)", padding: "14px", borderRadius: "8px" }}>
+              <div>
+                <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>Billing Cycle</span>
+                <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{currentMonthName}</strong>
+              </div>
+              <div>
+                <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>Due Day</span>
+                <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{payEmiTarget.emi_day || 5}th of Month</strong>
+              </div>
+              <div>
+                <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>Current Balance</span>
+                <strong style={{ fontSize: "14px", color: "var(--accent-warning)" }}>{currency(payEmiTarget.outstanding)}</strong>
+              </div>
+              <div>
+                <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>Interest Portion</span>
+                <strong style={{ fontSize: "14px", color: "var(--text-secondary)" }}>
+                  {currency(Math.round(payEmiTarget.outstanding * ((payEmiTarget.interest_rate || 10) / 1200)))}
+                </strong>
+              </div>
+              <div>
+                <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>Principal Repaid</span>
+                <strong style={{ fontSize: "14px", color: "var(--accent-success)" }}>
+                  {currency(Math.max(0, Math.round(payEmiAmount - (payEmiTarget.outstanding * ((payEmiTarget.interest_rate || 10) / 1200)))))}
+                </strong>
+              </div>
+              <div>
+                <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>New Balance After Pay</span>
+                <strong style={{ fontSize: "14px", color: "var(--accent)" }}>
+                  {currency(Math.max(0, Math.round(payEmiTarget.outstanding - Math.max(0, payEmiAmount - (payEmiTarget.outstanding * ((payEmiTarget.interest_rate || 10) / 1200))))))}
+                </strong>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
+              <Field label="Monthly EMI Amount (₹)" style={{ minWidth: "200px" }}>
+                <NumberInput
+                  required
+                  min="1"
+                  value={payEmiAmount}
+                  onChange={(val) => setPayEmiAmount(val)}
+                />
+              </Field>
+
+              <Button type="submit" disabled={payingEmi} style={{ background: "var(--accent-success)", borderColor: "var(--accent-success)" }}>
+                {payingEmi ? "Processing Payment..." : `Confirm & Pay ${currency(payEmiAmount)}`}
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setPayEmiTarget(null)} disabled={payingEmi}>
+                Cancel
               </Button>
             </div>
           </form>
@@ -1917,95 +2601,270 @@ export function Debt() {
 
       {/* Prepayment Dialog */}
       {prepayTarget && (
-        <Card style={{ marginBottom: "24px", border: "1px solid var(--accent-success)", background: "rgba(16, 185, 129, 0.04)" }}>
-          <div className="section-title"><CircleDollarSign /> Make Principal Prepayment: {prepayTarget.name}</div>
-          <p className="muted" style={{ margin: "4px 0 12px", fontSize: "13px" }}>
-            Current Outstanding: <strong>{currency(prepayTarget.outstanding)}</strong>. Extra principal prepayments reduce interest burden and shorten your remaining repayment tenure.
+        <Card style={{ marginBottom: "24px", border: "1px solid var(--accent-info)", background: "rgba(59, 130, 246, 0.04)" }}>
+          <div className="section-title">
+            <CircleDollarSign color="var(--accent)" /> Make Extra Principal Prepayment: {prepayTarget.name}
+          </div>
+          <p className="muted" style={{ margin: "4px 0 14px", fontSize: "13px" }}>
+            Current Outstanding: <strong>{currency(prepayTarget.outstanding)}</strong>. Choose your payoff strategy: shorten remaining tenure or lower monthly cash outflow.
           </p>
-          <form onSubmit={handlePrepay} style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
-            <Field label="Prepayment Amount (₹)" style={{ minWidth: "220px" }}>
-              <NumberInput
-                value={prepayAmount}
-                onChange={(val) => setPrepayAmount(val)}
-                min="500"
-                max={prepayTarget.outstanding}
-              />
-            </Field>
-            <Button type="submit" disabled={prepaying}>
-              {prepaying ? "Applying Prepayment..." : `Prepay ${currency(prepayAmount)}`}
-            </Button>
-            <Button type="button" variant="ghost" onClick={() => setPrepayTarget(null)} disabled={prepaying}>
-              Cancel
-            </Button>
+
+          <form onSubmit={handlePrepay} style={{ display: "grid", gap: "14px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" }}>
+              <Field label="Prepayment Amount (₹)">
+                <NumberInput
+                  required
+                  value={prepayAmount}
+                  onChange={(val) => setPrepayAmount(val)}
+                  min="500"
+                  max={prepayTarget.outstanding}
+                />
+              </Field>
+
+              <Field label="Prepayment Strategy">
+                <select
+                  value={prepayStrategy}
+                  onChange={(e) => setPrepayStrategy(e.target.value)}
+                >
+                  <option value="reduce_tenure">Reduce Loan Tenure (Keep EMI same — Finish early)</option>
+                  <option value="reduce_emi">Reduce Monthly EMI (Keep tenure same — Lower monthly cash burden)</option>
+                </select>
+              </Field>
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <Button type="button" variant="ghost" onClick={() => setPrepayTarget(null)} disabled={prepaying}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={prepaying}>
+                {prepaying ? "Applying Prepayment..." : `Prepay ${currency(prepayAmount)} Principal`}
+              </Button>
+            </div>
           </form>
         </Card>
       )}
 
-      {/* Individual Debt Cards with In-Line Payoff Recommendations */}
+      {/* Amortization Schedule Modal */}
+      {activeAmortization && (() => {
+        const schedule = generateAmortizationPreview(
+          activeAmortization.outstanding,
+          activeAmortization.interest_rate,
+          activeAmortization.emi,
+          360
+        );
+        const totalInterest = schedule.reduce((sum, r) => sum + r.interest, 0);
+        const totalOutflow = schedule.reduce((sum, r) => sum + r.emi, 0);
+        const finalRow = schedule[schedule.length - 1];
+
+        return (
+          <Card style={{ marginBottom: "24px", border: "1px solid var(--border-color)", boxShadow: "0 8px 30px rgba(0,0,0,0.15)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "8px" }}>
+              <div className="section-title">
+                <SlidersHorizontal /> Full Repayment Amortization Schedule: {activeAmortization.name}
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setActiveAmortization(null)}>Close Schedule</Button>
+            </div>
+            <p className="muted" style={{ fontSize: "12px", margin: "0 0 14px" }}>
+              Complete month-by-month principal vs interest reduction schedule until final <strong>₹0 zero-balance payoff</strong> based on current outstanding balance of {currency(activeAmortization.outstanding)} at {activeAmortization.interest_rate}% p.a.
+            </p>
+
+            {/* Schedule Summary Banner */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "10px", padding: "12px 14px", background: "var(--surface-hover)", borderRadius: "8px", border: "1px solid var(--border-color)", marginBottom: "14px", fontSize: "12px" }}>
+              <div>
+                <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>Total Remaining Installments</span>
+                <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{schedule.length} Months</strong>
+              </div>
+              <div>
+                <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>Total Remaining Interest</span>
+                <strong style={{ fontSize: "14px", color: "var(--accent)" }}>{currency(totalInterest)}</strong>
+              </div>
+              <div>
+                <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>Total Repayment Outflow</span>
+                <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{currency(totalOutflow)}</strong>
+              </div>
+              <div>
+                <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>Final Payoff Date (Zero Balance)</span>
+                <strong style={{ fontSize: "14px", color: "var(--accent-success)" }}>
+                  {finalRow?.monthName || "Paid Off"}
+                </strong>
+              </div>
+            </div>
+
+            <div style={{ overflowX: "auto", maxHeight: "500px", overflowY: "auto", borderRadius: "8px", border: "1px solid var(--border-color)" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                <thead style={{ position: "sticky", top: 0, zIndex: 2, background: "var(--bg-surface)" }}>
+                  <tr style={{ borderBottom: "1px solid var(--border-color)", textAlign: "left" }}>
+                    <th style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>Installment / Month</th>
+                    <th style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>Starting Balance</th>
+                    <th style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>Monthly EMI</th>
+                    <th style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>Interest Paid</th>
+                    <th style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>Principal Repaid</th>
+                    <th style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>Ending Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {schedule.map((row) => (
+                    <tr
+                      key={row.month}
+                      style={{
+                        borderBottom: "1px solid var(--border-color)",
+                        background: row.isFinal ? "rgba(16, 185, 129, 0.08)" : undefined
+                      }}
+                    >
+                      <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
+                        <strong style={{ color: "var(--text-primary)" }}>{row.ordinal} Month</strong>
+                        <span style={{ color: "var(--text-muted)", fontSize: "12px", marginLeft: "6px" }}>
+                          ({row.monthName})
+                        </span>
+                      </td>
+                      <td style={{ padding: "10px 14px" }}>{currency(row.startBal)}</td>
+                      <td style={{ padding: "10px 14px", fontWeight: 600 }}>{currency(row.emi)}</td>
+                      <td style={{ padding: "10px 14px", color: "var(--text-secondary)" }}>{currency(row.interest)}</td>
+                      <td style={{ padding: "10px 14px", color: "var(--accent-success)", fontWeight: 600 }}>{currency(row.principal)}</td>
+                      <td style={{ padding: "10px 14px", fontWeight: 600 }}>
+                        {row.isFinal ? (
+                          <Badge tone="success">₹0 (Paid Off)</Badge>
+                        ) : (
+                          <span style={{ color: "var(--text-primary)" }}>{currency(row.endBal)}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        );
+      })()}
+
+      {/* Individual Loan Cards */}
       {items.length > 0 ? (
         <section className="debt-card-grid">
           {items.map((item) => {
+            const elapsed = Number(item.tenure_elapsed_months) || 0;
+            const remaining = Number(item.remaining_months) || 0;
+            const totalTenure = Number(item.total_tenure_months) || (elapsed + remaining) || 12;
+            const tenurePct = totalTenure > 0 ? Math.min(100, Math.max(0, Math.round((elapsed / totalTenure) * 100))) : 0;
+            const payoffDateStr = getProjectedEndDate(remaining);
+            const isPaidThisMonth = item.last_payment_date === currentYearMonth;
+            const isPaidOff = item.status === "paid_off" || Number(item.outstanding) <= 0;
+
             const extraEmiEstimate = Math.round((Number(item.emi) || 0) * 0.2) || 2000;
             const interestSavingsEstimate = Math.round((Number(item.outstanding) || 0) * ((Number(item.interest_rate) || 10) / 100) * 0.4);
-            const monthsSavedEstimate = Math.min(Math.max(1, (Number(item.remaining_months) || 12) - 2), Math.max(2, Math.round((Number(item.remaining_months) || 12) * 0.25)));
-            const paidPct = item.principal > 0 ? Math.min(100, Math.max(0, Math.round(((item.principal - item.outstanding) / item.principal) * 100))) : 0;
+            const monthsSavedEstimate = Math.min(Math.max(1, remaining - 2), Math.max(2, Math.round(remaining * 0.25)));
 
             return (
-              <div key={item.id || item.name} className="debt-card-item">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                  <strong style={{ fontSize: '18px', color: 'var(--text-primary)' }}>{item.name}</strong>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Badge tone="warning">{item.remaining_months} months remaining</Badge>
-                    <Button
-                      variant="secondary"
-                      onClick={() => { setPrepayTarget(item); setPrepayAmount(Math.min(25000, item.outstanding)); }}
-                      style={{ padding: '4px 10px', fontSize: '12px' }}
+              <div key={item.id || item.name} className="debt-card-item" style={{ border: isPaidOff ? "1px solid var(--accent-success)" : "1px solid var(--border-color)" }}>
+                {/* Header */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "8px" }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                      <strong style={{ fontSize: "18px", color: "var(--text-primary)" }}>{item.name}</strong>
+                      <Badge tone="info">{item.loan_type || "Personal Loan"}</Badge>
+                      {item.lender && <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>• {item.lender}</span>}
+                    </div>
+                    <span style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px", display: "block" }}>
+                      Started {formatReadableDate(item.start_date)} • EMI Due: {item.emi_day || 5}th of every month
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    {isPaidOff ? (
+                      <Badge tone="success">Fully Paid Off</Badge>
+                    ) : isPaidThisMonth ? (
+                      <Badge tone="success">✓ EMI Paid for {currentMonthName.split(' ')[0]}</Badge>
+                    ) : (
+                      <Badge tone="warning">Upcoming EMI</Badge>
+                    )}
+                    <button
+                      type="button"
+                      className="icon-button"
+                      onClick={() => handleStartEdit(item)}
+                      title="Edit Loan Details"
+                      style={{ padding: "6px" }}
                     >
-                      Prepay
-                    </Button>
+                      <Pencil size={15} />
+                    </button>
                     <button
                       type="button"
                       className="icon-button danger"
                       onClick={() => handleDelete(item)}
-                      title="Remove or Mark Paid Off"
-                      style={{ padding: '6px' }}
+                      title="Delete Loan Record"
+                      style={{ padding: "6px" }}
                     >
-                      <Trash2 size={16} />
+                      <Trash2 size={15} />
                     </button>
                   </div>
                 </div>
 
-                <div style={{ margin: '10px 0 6px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    <span>Payoff Progress ({paidPct}% Paid)</span>
-                    <span>{currency(item.outstanding)} remaining of {currency(item.principal || item.outstanding)}</span>
+                {/* Progress Bar & Tenure Counters */}
+                <div style={{ margin: "14px 0 8px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "var(--text-muted)", marginBottom: "6px" }}>
+                    <span>
+                      <strong style={{ color: "var(--text-primary)" }}>{elapsed} of {totalTenure} EMIs Paid</strong> ({tenurePct}% completed)
+                    </span>
+                    <span>
+                      <strong style={{ color: "var(--accent)" }}>{remaining} months remaining</strong> (Finishes {payoffDateStr})
+                    </span>
                   </div>
-                  <Progress value={paidPct} tone="success" />
+                  <Progress value={tenurePct} tone={isPaidOff ? "success" : "info"} />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '12px', fontSize: '14px', margin: '8px 0' }}>
+                {/* Metric Grid */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "10px", fontSize: "14px", margin: "12px 0", background: "var(--surface-hover)", padding: "12px", borderRadius: "8px" }}>
                   <div>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '12px', display: 'block' }}>Outstanding</span>
-                    <strong style={{ fontSize: '16px', color: 'var(--text-primary)' }}>{currency(item.outstanding)}</strong>
+                    <span style={{ color: "var(--text-muted)", fontSize: "11px", display: "block" }}>Outstanding Balance</span>
+                    <strong style={{ fontSize: "16px", color: isPaidOff ? "var(--accent-success)" : "var(--text-primary)" }}>
+                      {currency(item.outstanding)}
+                    </strong>
                   </div>
                   <div>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '12px', display: 'block' }}>Monthly EMI</span>
-                    <strong style={{ fontSize: '16px', color: 'var(--accent)' }}>{currency(item.emi)}</strong>
+                    <span style={{ color: "var(--text-muted)", fontSize: "11px", display: "block" }}>Monthly EMI</span>
+                    <strong style={{ fontSize: "16px", color: "var(--accent)" }}>{currency(item.emi)}</strong>
                   </div>
                   <div>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '12px', display: 'block' }}>Interest Rate</span>
-                    <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>{item.interest_rate}% p.a.</strong>
+                    <span style={{ color: "var(--text-muted)", fontSize: "11px", display: "block" }}>Original Principal</span>
+                    <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{currency(item.principal || item.outstanding)}</strong>
                   </div>
                   <div>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '12px', display: 'block' }}>Annual Interest</span>
-                    <strong style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>{currency(Math.round(item.outstanding * (item.interest_rate / 100)))}</strong>
+                    <span style={{ color: "var(--text-muted)", fontSize: "11px", display: "block" }}>Interest Rate</span>
+                    <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{item.interest_rate}% p.a.</strong>
                   </div>
                 </div>
 
                 {/* In-Line Tailored Payoff Suggestion */}
-                <div className="recommendation" style={{ marginTop: '10px', fontSize: '13px' }}>
-                  <strong>Payoff Strategy:</strong> Increasing monthly EMI by <strong>{currency(extraEmiEstimate)}</strong> saves approx. <strong>{currency(interestSavingsEstimate)}</strong> in interest and cuts tenure by <strong>{monthsSavedEstimate} months</strong>.
-                </div>
+                {!isPaidOff && (
+                  <div className="recommendation" style={{ marginTop: "8px", fontSize: "12px" }}>
+                    <strong>Payoff Optimization:</strong> Adding <strong>{currency(extraEmiEstimate)}</strong> to your monthly installment saves approx. <strong>{currency(interestSavingsEstimate)}</strong> in total interest and cuts your repayment by <strong>{monthsSavedEstimate} months</strong>.
+                  </div>
+                )}
+
+                {/* Actions Toolbar */}
+                {!isPaidOff && (
+                  <div style={{ display: "flex", gap: "8px", marginTop: "14px", flexWrap: "wrap", alignItems: "center" }}>
+                    <Button
+                      variant="primary"
+                      onClick={() => openPayEmiModal(item)}
+                      style={{ background: "var(--accent-success)", borderColor: "var(--accent-success)", fontSize: "13px", padding: "6px 14px" }}
+                    >
+                      <CreditCard size={15} /> Pay Monthly EMI ({currency(item.emi)})
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => { setPrepayTarget(item); setPrepayAmount(Math.min(25000, item.outstanding)); }}
+                      style={{ fontSize: "13px", padding: "6px 14px" }}
+                    >
+                      <CircleDollarSign size={15} /> Prepay Principal
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setActiveAmortization(activeAmortization?.id === item.id ? null : item)}
+                      style={{ fontSize: "13px", padding: "6px 12px" }}
+                    >
+                      <SlidersHorizontal size={14} /> Schedule
+                    </Button>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -2013,16 +2872,16 @@ export function Debt() {
       ) : (
         <Card>
           <EmptyState
-            title="No active debt obligations"
-            detail="You are currently debt-free! If you want to track a home loan, car loan, education loan, or credit card liability, click 'Add Loan / Liability' above to monitor interest savings and accelerated payoff."
+            title="No active loan or debt obligations"
+            detail="You are currently debt-free! If you want to track a personal loan, home loan, vehicle loan, education loan, or credit card EMI, click 'Add Loan / Liability' above to monitor monthly EMIs and interest savings."
           />
         </Card>
       )}
 
       <QuickLinks links={[
-        { to: '/simulator', icon: CircleDollarSign, label: 'Simulator', detail: 'Test new loan scenarios' },
+        { to: '/simulator', icon: CircleDollarSign, label: 'Simulator', detail: 'Test new loan payoff scenarios' },
         { to: '/health', icon: Activity, label: 'Health Score', detail: 'See debt burden impact' },
-        { to: '/budget', icon: SlidersHorizontal, label: 'Budget', detail: 'Free cash for payments' },
+        { to: '/budget', icon: SlidersHorizontal, label: 'Budget', detail: 'Manage monthly cash flow' },
       ]} />
     </>
   );

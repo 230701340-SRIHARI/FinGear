@@ -1,0 +1,98 @@
+{
+  "timestamp": "2026-09-08T22:54:46.464352",
+  "forecasting": {
+    "samples_evaluated": 83,
+    "mae_inr": 210.39,
+    "rmse_inr": 295.88,
+    "mape_percent": 17.06,
+    "accuracy_percent": 82.94,
+    "r2_score": 0.5624,
+    "directional_accuracy_percent": 48.78,
+    "average_latency_ms": 44.86,
+    "feature_importances": {
+      "rolling_3d_mean": 0.0187,
+      "rolling_7d_mean": 0.0099,
+      "rolling_7d_std": 0.0233,
+      "day_of_week": 0.1371,
+      "day_of_month": 0.5422,
+      "is_weekend": 0.1931,
+      "days_since_salary": 0.0625,
+      "prev_day_spend": 0.0133
+    }
+  },
+  "anomaly_detection": {
+    "samples_evaluated": 300,
+    "true_positives": 47,
+    "false_positives": 0,
+    "true_negatives": 240,
+    "false_negatives": 13,
+    "accuracy_percent": 95.67,
+    "precision_percent": 100.0,
+    "recall_percent": 78.33,
+    "f1_score": 0.8785,
+    "roc_auc_score": 0.9992,
+    "false_positive_rate_percent": 0.0,
+    "average_latency_ms": 0.048
+  },
+  "health_framework": {
+    "tier_evaluations": [
+      {
+        "tier": 1,
+        "name": "Survival",
+        "monthly_income": 22000,
+        "score": 38,
+        "grade": "Financially Vulnerable",
+        "spending_score": 35,
+        "savings_score": 23,
+        "debt_score": 49
+      },
+      {
+        "tier": 2,
+        "name": "Baseline",
+        "monthly_income": 42000,
+        "score": 72,
+        "grade": "Stable, improving",
+        "spending_score": 83,
+        "savings_score": 43,
+        "debt_score": 79
+      },
+      {
+        "tier": 3,
+        "name": "Accumulation",
+        "monthly_income": 72000,
+        "score": 92,
+        "grade": "Financially Healthy",
+        "spending_score": 94,
+        "savings_score": 83,
+        "debt_score": 96
+      },
+      {
+        "tier": 4,
+        "name": "Reverse Budget",
+        "monthly_income": 115000,
+        "score": 97,
+        "grade": "Financially Healthy",
+        "spending_score": 95,
+        "savings_score": 100,
+        "debt_score": 100
+      },
+      {
+        "tier": 5,
+        "name": "Wealth Building",
+        "monthly_income": 240000,
+        "score": 97,
+        "grade": "Financially Healthy",
+        "spending_score": 96,
+        "savings_score": 100,
+        "debt_score": 100
+      }
+    ],
+    "resilience_cap_effective": true,
+    "average_latency_ms": 0.059
+  },
+  "advanced_regressors": {
+    "mean_predicted_return_percent": 7.86,
+    "mean_goal_feasibility": 0.298,
+    "mean_expense_trend_multiplier": 0.218
+  }
+}

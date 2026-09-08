@@ -176,7 +176,7 @@ body {
   transition: background-color 0.25s ease, color 0.25s ease;
 }
 button, input, select { font: inherit; color: inherit; }
-input, select {
+input:not([type="checkbox"]):not([type="radio"]), select {
   width: 100%;
   min-height: 44px;
   border: 1px solid var(--border-color);
@@ -187,7 +187,18 @@ input, select {
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
-input:focus, select:focus {
+input[type="checkbox"], input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  max-height: 18px;
+  border-radius: 4px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+  margin: 0;
+}
+input:not([type="checkbox"]):not([type="radio"]):focus, select:focus {
   border-color: var(--border-focus);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
 }
@@ -381,6 +392,8 @@ a { color: inherit; text-decoration: none; }
   justify-content: center;
   gap: 8px;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: all 0.15s ease;
 }
 .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }

@@ -1,0 +1,80 @@
+================================================================================
+             FINGEAR AI / ML MODEL ACCURACY & PERFORMANCE REPORT               
+================================================================================
+Generated On : 2026-09-08 22:54:46
+Platform     : win32 | Python 3.11.9
+Status       : ALL PERFORMANCE BENCHMARKS PASSED
+--------------------------------------------------------------------------------
+
+1. OVERALL ACCURACY SCORECARD
+--------------------------------------------------------------------------------
+Model Component              Metric                   Result       Target     Status
+--------------------------------------------------------------------------------
+Expense Forecasting          Accuracy Rate            82.94%       > 75.0%    PASSED
+Expense Forecasting          Average Daily Error      Rs. 210      < Rs. 250  PASSED
+Expense Forecasting          R-Squared Score          0.5624       > 0.500    PASSED
+Anomaly Detection            Classification Accuracy  95.67%       > 90.0%    PASSED
+Anomaly Detection            Precision (No False Alarms) 100.0%       > 90.0%    PASSED
+Anomaly Detection            Recall (Caught Rate)     78.33%       > 75.0%    PASSED
+Anomaly Detection            F1-Score                 0.8785       > 0.850    PASSED
+Financial Health Engine      5-Tier Adaptive Alignment 100.0%       100.0%     PASSED
+Critical Debt Guardrail      Safety Cap Trigger Rate  100.0%       100.0%     PASSED
+--------------------------------------------------------------------------------
+
+2. EXPENSE FORECASTING RESULTS (Random Forest Regressor)
+--------------------------------------------------------------------------------
+  - Test Methodology        : 83-day rolling walk-forward backtest
+  - Prediction Accuracy     : 82.94%
+  - Average Error (MAE)     : Rs. 210.39 per day
+  - Root Mean Squared Error : Rs. 295.88
+  - Directional Accuracy    : 48.78% (correct up/down trend)
+  - Average Response Time   : 44.86 ms
+  - Visual Graph Generated  : 1_expense_forecasting_actual_vs_predicted.png
+
+3. ANOMALY DETECTION RESULTS (K-Means + Neural Autoencoder Ensemble)
+--------------------------------------------------------------------------------
+  - Test Set Evaluated      : 300 real-world transactions (240 normal, 60 anomalous)
+  - Overall Accuracy        : 95.67%
+  - Precision               : 100.0% (Zero false alarms on normal spend)
+  - Detection Rate (Recall) : 78.33% (47 of 60 anomalies intercepted)
+  - False Positive Rate     : 0.0% (No spam warnings to users)
+  - ROC-AUC Separability    : 0.9992
+  - Average Response Time   : 0.048 ms per transaction
+  - Visual Graph Generated  : 2_anomaly_detection_scatter.png
+
+  CONFUSION MATRIX BREAKDOWN:
+    * True Negatives  (Normal spend cleared)  : 240 / 240 (100.0%)
+    * True Positives  (Anomalies caught)      : 47 / 60  (78.3%)
+    * False Positives (False alarms)          : 0 (0.0%)
+    * False Negatives (Missed subtle outliers): 13
+
+4. FINANCIAL HEALTH NETWORK RESULTS (Across 5 Income Slabs)
+--------------------------------------------------------------------------------
+Tier & Income Slab        Monthly Income   Score      Health Grade
+--------------------------------------------------------------------------------
+Tier 1: Survival          Rs. 22,000       38/100     Financially Vulnerable
+Tier 2: Baseline          Rs. 42,000       72/100     Stable, improving
+Tier 3: Accumulation      Rs. 72,000       92/100     Financially Healthy
+Tier 4: Reverse Budget    Rs. 115,000      97/100     Financially Healthy
+Tier 5: Wealth Building   Rs. 240,000      97/100     Financially Healthy
+--------------------------------------------------------------------------------
+  - Debt Resilience Guardrail: PASSED (100% trigger accuracy)
+    (Scores automatically capped at <= 49/100 under critical debt loads > 40% DTI)
+
+5. AUXILIARY ML REGRESSORS (Numerical Validation)
+--------------------------------------------------------------------------------
+  - Investment Return Model  : Mean predicted return = 7.86% p.a. (Normal range: 8-12%)
+  - Goal Feasibility Model   : Mean feasibility score = 0.298 (Scale: 0.0 to 1.0)
+  - Expense Trend Model      : Mean trend multiplier  = 0.218x
+
+6. SUMMARY OF GENERATED VISUAL FILES
+--------------------------------------------------------------------------------
+  [1] 1_expense_forecasting_actual_vs_predicted.png
+      -> Clean 30-day line graph showing Actual Spending vs AI Predicted Spending.
+  [2] 2_anomaly_detection_scatter.png
+      -> Clear scatter chart: Green dots (Normal spend) vs Red dots (Flagged anomalies).
+  [3] 3_ai_accuracy_summary_barchart.png
+      -> Simple horizontal bar chart showing all key model accuracy scores.
+================================================================================
+END OF REPORT
+================================================================================

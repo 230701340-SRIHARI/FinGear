@@ -926,26 +926,48 @@ def add_debt(user_id: str, debt_data: dict) -> dict:
     debts = state.setdefault("debts", [])
 
     debt_id = str(debt_data.get("id") or uuid4())
+    name = str(debt_data.get("name", "Loan")).strip()
+    loan_type = str(debt_data.get("loan_type", "Personal Loan")).strip()
+    lender = str(debt_data.get("lender", "")).strip()
     principal = float(debt_data.get("principal", 0.0))
     outstanding = float(debt_data.get("outstanding", principal))
     interest_rate = float(debt_data.get("interest_rate", 10.0))
     emi = float(debt_data.get("emi", 0.0))
-    remaining_months = int(debt_data.get("remaining_months", 12))
-    name = str(debt_data.get("name", "Loan")).strip()
+
+    total_tenure_months = int(debt_data.get("total_tenure_months") or debt_data.get("remaining_months") or 12)
+    tenure_elapsed_months = int(debt_data.get("tenure_elapsed_months", 0))
+    remaining_months = int(debt_data.get("remaining_months") or max(0, total_tenure_months - tenure_elapsed_months))
+
+    start_date = str(debt_data.get("start_date") or date.today().strftime("%Y-%m-%d"))
+    end_date = str(debt_data.get("end_date") or "")
+    emi_day = int(debt_data.get("emi_day", 5))
+    last_payment_date = debt_data.get("last_payment_date")
+    auto_deduct = bool(debt_data.get("auto_deduct", True))
+    status = str(debt_data.get("status", "active"))
 
     new_debt = {
         "id": debt_id,
         "name": name,
+        "loan_type": loan_type,
+        "lender": lender,
         "principal": principal,
         "outstanding": outstanding,
         "interest_rate": interest_rate,
         "emi": emi,
+        "total_tenure_months": total_tenure_months,
+        "tenure_elapsed_months": tenure_elapsed_months,
         "remaining_months": remaining_months,
+        "start_date": start_date,
+        "end_date": end_date,
+        "emi_day": emi_day,
+        "last_payment_date": last_payment_date,
+        "auto_deduct": auto_deduct,
+        "status": status,
     }
     debts.append(new_debt)
 
     state["profile"]["total_debt"] = max(0.0, round(sum(float(d.get("outstanding", 0.0)) for d in debts), 2))
-    state["profile"]["monthly_debt_payment"] = max(0.0, round(sum(float(d.get("emi", 0.0)) for d in debts), 2))
+    state["profile"]["monthly_debt_payment"] = max(0.0, round(sum(float(d.get("emi", 0.0)) for d in debts if d.get("status") != "paid_off"), 2))
 
     if SessionLocal:
         try:
@@ -954,11 +976,21 @@ def add_debt(user_id: str, debt_data: dict) -> dict:
                 id=debt_id,
                 user_id=user_id,
                 name=name,
+                loan_type=loan_type,
+                lender=lender,
                 principal=principal,
                 outstanding=outstanding,
                 interest_rate=interest_rate,
                 emi=emi,
+                total_tenure_months=total_tenure_months,
+                tenure_elapsed_months=tenure_elapsed_months,
                 remaining_months=remaining_months,
+                start_date=start_date,
+                end_date=end_date,
+                emi_day=emi_day,
+                last_payment_date=last_payment_date,
+                auto_deduct=auto_deduct,
+                status=status,
             )
             db.add(db_d)
             db.commit()
@@ -982,26 +1014,35 @@ def update_debt(user_id: str, debt_id: str, debt_data: dict) -> dict:
         raise ValueError(f"Debt {debt_id} not found")
 
     if "name" in debt_data: target["name"] = str(debt_data["name"]).strip()
+    if "loan_type" in debt_data: target["loan_type"] = str(debt_data["loan_type"]).strip()
+    if "lender" in debt_data: target["lender"] = str(debt_data["lender"]).strip()
     if "principal" in debt_data: target["principal"] = float(debt_data["principal"])
     if "outstanding" in debt_data: target["outstanding"] = float(debt_data["outstanding"])
     if "interest_rate" in debt_data: target["interest_rate"] = float(debt_data["interest_rate"])
     if "emi" in debt_data: target["emi"] = float(debt_data["emi"])
+    if "total_tenure_months" in debt_data: target["total_tenure_months"] = int(debt_data["total_tenure_months"])
+    if "tenure_elapsed_months" in debt_data: target["tenure_elapsed_months"] = int(debt_data["tenure_elapsed_months"])
     if "remaining_months" in debt_data: target["remaining_months"] = int(debt_data["remaining_months"])
+    if "start_date" in debt_data: target["start_date"] = str(debt_data["start_date"])
+    if "end_date" in debt_data: target["end_date"] = str(debt_data["end_date"])
+    if "emi_day" in debt_data: target["emi_day"] = int(debt_data["emi_day"])
+    if "last_payment_date" in debt_data: target["last_payment_date"] = debt_data["last_payment_date"]
+    if "auto_deduct" in debt_data: target["auto_deduct"] = bool(debt_data["auto_deduct"])
+    if "status" in debt_data: target["status"] = str(debt_data["status"])
 
     state["profile"]["total_debt"] = max(0.0, round(sum(float(d.get("outstanding", 0.0)) for d in debts), 2))
-    state["profile"]["monthly_debt_payment"] = max(0.0, round(sum(float(d.get("emi", 0.0)) for d in debts), 2))
+    state["profile"]["monthly_debt_payment"] = max(0.0, round(sum(float(d.get("emi", 0.0)) for d in debts if d.get("status") != "paid_off"), 2))
 
     if SessionLocal:
         try:
             db = SessionLocal()
             db_d = db.query(Debt).filter(Debt.id == debt_id, Debt.user_id == user_id).first()
             if db_d:
-                db_d.name = target["name"]
-                db_d.principal = target["principal"]
-                db_d.outstanding = target["outstanding"]
-                db_d.interest_rate = target["interest_rate"]
-                db_d.emi = target["emi"]
-                db_d.remaining_months = target["remaining_months"]
+                for k in ["name", "loan_type", "lender", "principal", "outstanding", "interest_rate", "emi",
+                          "total_tenure_months", "tenure_elapsed_months", "remaining_months", "start_date",
+                          "end_date", "emi_day", "last_payment_date", "auto_deduct", "status"]:
+                    if k in target and hasattr(db_d, k):
+                        setattr(db_d, k, target[k])
                 db.commit()
             db.close()
         except Exception as e:
@@ -1017,7 +1058,7 @@ def delete_debt(user_id: str, debt_id: str) -> None:
     state["debts"] = [d for d in debts if str(d.get("id")) != str(debt_id)]
 
     state["profile"]["total_debt"] = max(0.0, round(sum(float(d.get("outstanding", 0.0)) for d in state["debts"]), 2))
-    state["profile"]["monthly_debt_payment"] = max(0.0, round(sum(float(d.get("emi", 0.0)) for d in state["debts"]), 2))
+    state["profile"]["monthly_debt_payment"] = max(0.0, round(sum(float(d.get("emi", 0.0)) for d in state["debts"] if d.get("status") != "paid_off"), 2))
 
     if SessionLocal:
         try:
@@ -1031,7 +1072,94 @@ def delete_debt(user_id: str, debt_id: str) -> None:
     _sync_to_postgres(user_id, profile=state["profile"])
 
 
-def prepay_debt(user_id: str, debt_id: str, amount: float) -> dict:
+def pay_debt_emi(user_id: str, debt_id: str, payload: dict = None) -> dict:
+    """Record / execute regular monthly scheduled EMI payment with standard amortization."""
+    state = get_state(user_id)
+    debts = state.setdefault("debts", [])
+    target = None
+    for d in debts:
+        if str(d.get("id")) == str(debt_id):
+            target = d
+            break
+    if not target:
+        raise ValueError(f"Debt {debt_id} not found")
+
+    payload = payload or {}
+    emi_amount = float(payload.get("amount", target.get("emi", 0.0)))
+    if emi_amount <= 0:
+        raise ValueError("EMI amount must be greater than zero")
+
+    rate_monthly = (float(target.get("interest_rate", 0.0)) / 100.0) / 12.0
+    current_outstanding = float(target.get("outstanding", 0.0))
+    monthly_interest = round(current_outstanding * rate_monthly, 2)
+    principal_reduction = max(0.0, round(emi_amount - monthly_interest, 2))
+
+    if principal_reduction > current_outstanding:
+        principal_reduction = current_outstanding
+
+    new_outstanding = max(0.0, round(current_outstanding - principal_reduction, 2))
+    target["outstanding"] = new_outstanding
+    target["tenure_elapsed_months"] = int(target.get("tenure_elapsed_months", 0)) + 1
+    target["remaining_months"] = max(0, int(target.get("remaining_months", 1)) - 1)
+
+    curr_month = date.today().strftime("%Y-%m")
+    target["last_payment_date"] = curr_month
+
+    if new_outstanding == 0 or target["remaining_months"] == 0:
+        target["status"] = "paid_off"
+        target["outstanding"] = 0.0
+        target["emi"] = 0.0
+        target["remaining_months"] = 0
+    else:
+        target["status"] = target.get("status", "active")
+
+    state["profile"]["total_debt"] = max(0.0, round(sum(float(d.get("outstanding", 0.0)) for d in debts), 2))
+    state["profile"]["monthly_debt_payment"] = max(0.0, round(sum(float(d.get("emi", 0.0)) for d in debts if d.get("status") != "paid_off"), 2))
+
+    payment_date = str(payload.get("date") or date.today().strftime("%Y-%m-%d"))
+    txn_data = {
+        "id": str(uuid4()),
+        "date": payment_date,
+        "description": f"Loan EMI Payment - {target['name']} ({curr_month})",
+        "category": "Mandatory EMI",
+        "type": "expense",
+        "amount": emi_amount,
+        "is_recurring": True,
+    }
+    state["transactions"].insert(0, txn_data)
+
+    if SessionLocal:
+        try:
+            db = SessionLocal()
+            db_d = db.query(Debt).filter(Debt.id == debt_id, Debt.user_id == user_id).first()
+            if db_d:
+                db_d.outstanding = target["outstanding"]
+                db_d.tenure_elapsed_months = target["tenure_elapsed_months"]
+                db_d.remaining_months = target["remaining_months"]
+                db_d.emi = target["emi"]
+                db_d.last_payment_date = target["last_payment_date"]
+                db_d.status = target.get("status", "active")
+                db.commit()
+            db.close()
+        except Exception as e:
+            print(f"[DB pay_debt_emi] Error: {e}")
+
+    _sync_to_postgres(user_id, profile=state["profile"], txn=txn_data)
+
+    return {
+        "debt": deepcopy(target),
+        "receipt": {
+            "amount": emi_amount,
+            "interest_portion": monthly_interest,
+            "principal_reduction": principal_reduction,
+            "remaining_balance": new_outstanding,
+            "payment_date": payment_date,
+            "transaction_id": txn_data["id"],
+        }
+    }
+
+
+def prepay_debt(user_id: str, debt_id: str, amount: float, strategy: str = "reduce_tenure") -> dict:
     state = get_state(user_id)
     debts = state.setdefault("debts", [])
     target = None
@@ -1043,18 +1171,34 @@ def prepay_debt(user_id: str, debt_id: str, amount: float) -> dict:
         raise ValueError(f"Debt {debt_id} not found")
 
     amount = max(0.0, float(amount))
-    new_outstanding = max(0.0, round(float(target["outstanding"]) - amount, 2))
+    if amount <= 0:
+        raise ValueError("Prepayment amount must be greater than zero")
 
-    if target["outstanding"] > 0 and target["remaining_months"] > 0:
-        ratio = new_outstanding / target["outstanding"]
-        target["remaining_months"] = max(0 if new_outstanding == 0 else 1, round(target["remaining_months"] * ratio))
+    old_outstanding = float(target["outstanding"])
+    new_outstanding = max(0.0, round(old_outstanding - amount, 2))
     target["outstanding"] = new_outstanding
 
     if new_outstanding == 0:
         target["emi"] = 0.0
+        target["remaining_months"] = 0
+        target["status"] = "paid_off"
+    elif strategy == "reduce_emi" and target["remaining_months"] > 0:
+        # Recalculate lower monthly EMI for the remaining tenure
+        r = (float(target.get("interest_rate", 10.0)) / 100.0) / 12.0
+        n = int(target["remaining_months"])
+        if r > 0:
+            emi_calc = new_outstanding * (r * ((1 + r) ** n)) / (((1 + r) ** n) - 1)
+            target["emi"] = round(emi_calc, 2)
+        else:
+            target["emi"] = round(new_outstanding / max(1, n), 2)
+    else:
+        # Standard: reduce remaining tenure proportionately
+        if old_outstanding > 0 and target["remaining_months"] > 0:
+            ratio = new_outstanding / old_outstanding
+            target["remaining_months"] = max(1, round(target["remaining_months"] * ratio))
 
     state["profile"]["total_debt"] = max(0.0, round(sum(float(d.get("outstanding", 0.0)) for d in debts), 2))
-    state["profile"]["monthly_debt_payment"] = max(0.0, round(sum(float(d.get("emi", 0.0)) for d in debts), 2))
+    state["profile"]["monthly_debt_payment"] = max(0.0, round(sum(float(d.get("emi", 0.0)) for d in debts if d.get("status") != "paid_off"), 2))
 
     txn_data = {
         "id": str(uuid4()),
@@ -1074,6 +1218,7 @@ def prepay_debt(user_id: str, debt_id: str, amount: float) -> dict:
                 db_d.outstanding = target["outstanding"]
                 db_d.remaining_months = target["remaining_months"]
                 db_d.emi = target["emi"]
+                db_d.status = target.get("status", "active")
                 db.commit()
             db.close()
         except Exception as e:
@@ -1081,6 +1226,38 @@ def prepay_debt(user_id: str, debt_id: str, amount: float) -> dict:
 
     _sync_to_postgres(user_id, profile=state["profile"], txn=txn_data)
     return deepcopy(target)
+
+
+def process_monthly_debts(user_id: str) -> list[dict]:
+    """Check active debts with auto_deduct enabled and auto-progress tenure & log EMI if due for current month."""
+    state = get_state(user_id)
+    debts = state.setdefault("debts", [])
+    current_month = date.today().strftime("%Y-%m")
+    current_day = date.today().day
+    processed_payments = []
+
+    for d in debts:
+        if d.get("status") == "paid_off" or not d.get("auto_deduct", True):
+            continue
+        if float(d.get("outstanding", 0.0)) <= 0:
+            d["status"] = "paid_off"
+            continue
+
+        last_paid = d.get("last_payment_date")
+        emi_day = int(d.get("emi_day", 5))
+
+        # If not paid for current month yet and current day has reached or passed emi_day
+        if last_paid != current_month and current_day >= emi_day:
+            try:
+                result = pay_debt_emi(user_id, str(d["id"]), {
+                    "amount": float(d.get("emi", 0.0)),
+                    "date": f"{current_month}-{min(28, emi_day):02d}"
+                })
+                processed_payments.append(result)
+            except Exception as e:
+                print(f"[process_monthly_debts] Error processing debt {d.get('id')}: {e}")
+
+    return processed_payments
 
 
 def add_conversation(user_id: str, question: str, answer: str) -> dict:
