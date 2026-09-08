@@ -138,8 +138,12 @@ export function FinanceProvider({ children }) {
       name: (user?.name && profile.name === "Arjun Verma") ? user.name : (profile.name || user?.name || "Client"),
       email: (user?.email && profile.email === "arjun.verma@example.com") ? user.email : (profile.email || user?.email || ""),
     };
-    const updated = await api.updateProfile(payload);
-    setData((current) => ({ ...current, profile: updated }));
+    try {
+      const updated = await api.updateProfile(payload);
+      setData((current) => ({ ...current, profile: updated || payload }));
+    } catch {
+      setData((current) => ({ ...current, profile: payload }));
+    }
     await refresh();
   }
 
@@ -177,9 +181,34 @@ export function FinanceProvider({ children }) {
         { id: "temp-" + Date.now(), ...transaction, amount },
         ...(current.transactions?.transactions || [])
       ];
+
+      // Optimistically update dashboard KPIs so runway and net worth update with 0ms latency
+      let updatedDashboard = current.dashboard;
+      if (updatedDashboard?.kpis) {
+        const expList = prof.detailed_expenses?.length ? prof.detailed_expenses : (prof.monthly_expenses || []);
+        let expTotal = expList.reduce((acc, item) => acc + (Number(item?.amount) || 0), 0);
+        if (expTotal <= 0 && Number(prof.monthly_income) > 0) {
+          expTotal = Number(prof.monthly_income) * 0.70;
+        }
+        const debtEmi = Number(prof.monthly_debt_payment) || 0;
+        const burn = Math.max(expTotal + debtEmi, 1);
+        const runway = (Number(prof.emergency_fund || 0) / burn).toFixed(1);
+        const runwayTone = Number(runway) >= 6.0 ? "success" : (Number(runway) >= 3.0 ? "info" : "warning");
+        const runwayDetail = Number(runway) >= 6.0 ? "Target reached (6+ mos)" : (Number(runway) >= 3.0 ? "Target is 6 months" : "Below 3-mo benchmark");
+
+        const updatedKpis = updatedDashboard.kpis.map((kpi) => {
+          if (kpi.label?.toLowerCase().includes("runway")) {
+            return { ...kpi, value: `${runway} months`, detail: runwayDetail, tone: runwayTone };
+          }
+          return kpi;
+        });
+        updatedDashboard = { ...updatedDashboard, kpis: updatedKpis };
+      }
+
       return {
         ...current,
         profile: prof,
+        dashboard: updatedDashboard,
         transactions: {
           ...current.transactions,
           transactions: newTxns

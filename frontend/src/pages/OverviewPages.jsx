@@ -10,7 +10,39 @@ import { currency } from "../lib/format";
 export function Dashboard() {
   const { user } = useAuth();
   const { dashboard, health, loading, aiForecast, aiAnomalies, addTransaction, profile } = useFinance();
-  const kpis = dashboard?.kpis || [];
+  const kpis = useMemo(() => {
+    const baseKpis = dashboard?.kpis ? [...dashboard.kpis] : [];
+
+    // Dynamically calculate live runway from the active profile
+    // ensuring 0ms instantaneous reactivity whenever reserves, expenses, or debt change
+    const ef = Number(profile?.emergency_fund) || 0;
+    const expList = profile?.detailed_expenses?.length ? profile.detailed_expenses : (profile?.monthly_expenses || []);
+    let expTotal = expList.reduce((acc, item) => acc + (Number(item?.amount) || 0), 0);
+    if (expTotal <= 0 && Number(profile?.monthly_income) > 0) {
+      expTotal = Number(profile.monthly_income) * 0.70;
+    }
+    const debtEmi = Number(profile?.monthly_debt_payment) || 0;
+    const monthlyBurn = Math.max(expTotal + debtEmi, 1);
+    const liveRunwayMonths = (ef / monthlyBurn).toFixed(1);
+
+    const runwayTone = Number(liveRunwayMonths) >= 6.0 ? "success" : (Number(liveRunwayMonths) >= 3.0 ? "info" : "warning");
+    const runwayDetail = Number(liveRunwayMonths) >= 6.0 ? "Target reached (6+ mos)" : (Number(liveRunwayMonths) >= 3.0 ? "Target is 6 months" : "Below 3-mo benchmark");
+
+    const runwayKpi = {
+      label: "Emergency runway",
+      value: `${liveRunwayMonths} months`,
+      detail: runwayDetail,
+      tone: runwayTone,
+    };
+
+    const runwayIdx = baseKpis.findIndex((k) => k.label?.toLowerCase().includes("runway"));
+    if (runwayIdx >= 0) {
+      baseKpis[runwayIdx] = runwayKpi;
+    } else if (baseKpis.length > 0) {
+      baseKpis.splice(4, 0, runwayKpi);
+    }
+    return baseKpis;
+  }, [dashboard?.kpis, profile]);
   const charts = dashboard?.charts || {};
   const forecastReady = aiForecast && aiForecast.status !== "learning";
   const adaptive = health?.adaptive_ratio || dashboard?.health?.adaptive_ratio;
@@ -350,13 +382,14 @@ export function Dashboard() {
 
 export function FinancialTwin() {
   const { profile, health, goals } = useFinance();
-  const expenses = useMemo(() => profile.monthly_expenses.reduce((sum, item) => sum + item.amount, 0), [profile.monthly_expenses]);
+  const expensesList = profile?.detailed_expenses?.length ? profile.detailed_expenses : (profile?.monthly_expenses || []);
+  const expenses = useMemo(() => expensesList.reduce((sum, item) => sum + (Number(item?.amount) || 0), 0), [expensesList]);
   const nodes = useMemo(() => [
-    { label: "Income", value: currency(profile.monthly_income), trend: "+ stable", x: 50, y: 18, tone: "success" },
-    { label: "Assets", value: currency(profile.savings_balance + profile.investments_balance), trend: "+8.4% projected", x: 28, y: 42, tone: "info" },
-    { label: "Debt", value: currency(profile.total_debt), trend: "7% income burden", x: 72, y: 42, tone: "warning" },
-    { label: "Cash Flow", value: currency(profile.monthly_income - expenses - profile.monthly_debt_payment), trend: "Decision capacity", x: 50, y: 55, tone: "ai" },
-    { label: "Goals", value: `${profile.goals.length} active`, trend: `${goals.analysis?.[0]?.achievement_probability || 65}% achievable`, x: 34, y: 76, tone: "success" },
+    { label: "Income", value: currency(profile?.monthly_income || 0), trend: "+ stable", x: 50, y: 18, tone: "success" },
+    { label: "Assets", value: currency((Number(profile?.savings_balance) || 0) + (Number(profile?.investments_balance) || 0)), trend: "+8.4% projected", x: 28, y: 42, tone: "info" },
+    { label: "Debt", value: currency(profile?.total_debt || 0), trend: "7% income burden", x: 72, y: 42, tone: "warning" },
+    { label: "Cash Flow", value: currency((Number(profile?.monthly_income) || 0) - expenses - (Number(profile?.monthly_debt_payment) || 0)), trend: "Decision capacity", x: 50, y: 55, tone: "ai" },
+    { label: "Goals", value: `${(profile?.goals || []).length} active`, trend: `${goals?.analysis?.[0]?.achievement_probability || 65}% achievable`, x: 34, y: 76, tone: "success" },
     { label: "Future State", value: "24 months", trend: "Baseline projection", x: 66, y: 76, tone: "info" },
   ], [profile, expenses, goals]);
 
@@ -396,16 +429,17 @@ export function FinancialTwin() {
 
 export function MyMoney() {
   const { profile, transactions } = useFinance();
+  const expensesList = profile?.detailed_expenses?.length ? profile.detailed_expenses : (profile?.monthly_expenses || []);
   return (
     <>
       <PageHeader eyebrow="My Money" title="Unified financial state" subtitle="One operating view for income, expenses, savings, debt and goals." />
       <section className="metric-grid">
-        <MetricCard icon={<IndianRupee />} label="Income" value={currency(profile.monthly_income)} detail="Monthly" tone="success" />
-        <MetricCard icon={<Activity />} label="Expenses" value={currency(transactions.summary?.expenses || 0)} detail="This month" tone="warning" />
-        <MetricCard icon={<WalletCards />} label="Investments" value={currency(profile.investments_balance)} detail="Current portfolio" tone="info" />
-        <MetricCard icon={<Goal />} label="Goals" value={profile.goals.length} detail="Active plans" tone="ai" />
+        <MetricCard icon={<IndianRupee />} label="Income" value={currency(profile?.monthly_income || 0)} detail="Monthly" tone="success" />
+        <MetricCard icon={<Activity />} label="Expenses" value={currency(transactions?.summary?.expenses || 0)} detail="This month" tone="warning" />
+        <MetricCard icon={<WalletCards />} label="Investments" value={currency(profile?.investments_balance || 0)} detail="Current portfolio" tone="info" />
+        <MetricCard icon={<Goal />} label="Goals" value={(profile?.goals || []).length} detail="Active plans" tone="ai" />
       </section>
-      <Card><div className="section-title">Money map</div><div className="state-list large">{profile.monthly_expenses.map((item) => <span key={item.category}>{item.category}: {currency(item.amount)}</span>)}</div></Card>
+      <Card><div className="section-title">Money map</div><div className="state-list large">{expensesList.map((item) => <span key={item?.category || item?.name}>{item?.category || item?.name}: {currency(item?.amount || 0)}</span>)}</div></Card>
       <QuickLinks links={[
         { to: '/budget', icon: SlidersHorizontal, label: 'Budget', detail: 'Category-level spending' },
         { to: '/transactions', icon: IndianRupee, label: 'Transactions', detail: 'Income & expense records' },

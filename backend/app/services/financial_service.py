@@ -24,8 +24,12 @@ def debt_to_income(profile: FinancialProfile) -> float:
     return profile.monthly_debt_payment / max(profile.monthly_income, 1)
 
 
-def emergency_runway(profile: FinancialProfile) -> float:
-    return profile.emergency_fund / max(total_expenses(profile) + profile.monthly_debt_payment, 1)
+def emergency_runway(profile: FinancialProfile | dict) -> float:
+    burn = total_expenses(profile) + float(getattr(profile, "monthly_debt_payment", None) or (profile.get("monthly_debt_payment") if isinstance(profile, dict) else 0.0) or 0.0)
+    ef = float(getattr(profile, "emergency_fund", None) or (profile.get("emergency_fund") if isinstance(profile, dict) else 0.0) or 0.0)
+    if burn <= 0:
+        return 0.0
+    return round(ef / burn, 2)
 
 
 def generate_ai_brief(
@@ -222,6 +226,10 @@ def build_dashboard(profile: FinancialProfile, transactions: list[dict], budgets
         salutation = "Good evening"
     first_name = (profile.name or "Client").strip().split()[0] if profile.name else "Client"
 
+    runway_val = emergency_runway(profile)
+    runway_tone = "success" if runway_val >= 6.0 else ("info" if runway_val >= 3.0 else "warning")
+    runway_detail = "Target reached (6+ mos)" if runway_val >= 6.0 else ("Target is 6 months" if runway_val >= 3.0 else "Below 3-mo benchmark")
+
     return {
         "greeting": f"{salutation}, {first_name}",
         "status": "Your financial system is stable." if score["score"] >= 70 else "Your financial system needs attention.",
@@ -230,7 +238,7 @@ def build_dashboard(profile: FinancialProfile, transactions: list[dict], budgets
             {"label": "Monthly cash flow", "value": currency_compact(cash_flow), "detail": "+12% vs last month", "tone": "info"},
             {"label": "Savings rate", "value": f"{score['savings_rate']:.0%}", "detail": "Excellent" if score["savings_rate"] >= 0.25 else "Needs work", "tone": "success"},
             {"label": "Debt burden", "value": f"{debt_to_income(profile):.0%}", "detail": "Low risk" if debt_to_income(profile) < 0.2 else "Monitor", "tone": "success"},
-            {"label": "Emergency runway", "value": f"{emergency_runway(profile):.1f} months", "detail": "Target is 6 months", "tone": "warning"},
+            {"label": "Emergency runway", "value": f"{runway_val:.1f} months", "detail": runway_detail, "tone": runway_tone},
             {"label": "Goal progress", "value": f"{len(valid_goals)} active", "detail": f"{sum(1 for goal in goals if goal['achievement_probability'] < 70)} at risk" if valid_goals else "No active goals", "tone": "ai" if valid_goals else "info"},
         ],
         "ai_brief": generate_ai_brief(profile, transactions, budgets, goals, score, cash_flow),

@@ -179,7 +179,7 @@ def _load_user_state_from_db(user_id: str, db=None) -> dict | None:
             "monthly_income_tier": db_prof.monthly_income_tier or 3,
             "monthly_income": float(db_prof.monthly_income or 0.0),
             "other_income": float(db_prof.other_income or 0.0),
-            "monthly_expenses": [],
+            "monthly_expenses": db_prof.detailed_expenses or [],
             "detailed_expenses": db_prof.detailed_expenses or [],
             "savings_balance": float(db_prof.savings_balance or 0.0),
             "investments_balance": float(db_prof.investments_balance or 0.0),
@@ -572,6 +572,15 @@ def update_profile(user_id: str, profile: dict) -> dict:
     real_name = u_obj.get("name")
     real_email = u_obj.get("email")
 
+    # Ensure monthly_expenses and detailed_expenses remain in sync
+    if profile.get("monthly_expenses") and not profile.get("detailed_expenses"):
+        profile["detailed_expenses"] = profile["monthly_expenses"]
+    elif profile.get("detailed_expenses") and not profile.get("monthly_expenses"):
+        profile["monthly_expenses"] = profile["detailed_expenses"]
+    elif profile.get("monthly_expenses"):
+        # If both are provided, let updated monthly_expenses override detailed_expenses
+        profile["detailed_expenses"] = profile["monthly_expenses"]
+
     if SessionLocal:
         try:
             db = SessionLocal()
@@ -664,6 +673,8 @@ def _sync_to_postgres(user_id: str, txn: dict | None = None, profile: dict | Non
             db.commit()
 
         if profile:
+            if profile.get("monthly_expenses") and not profile.get("detailed_expenses"):
+                profile["detailed_expenses"] = profile["monthly_expenses"]
             db_prof = db.query(FinancialProfile).filter(FinancialProfile.user_id == user_id).first()
             if not db_prof:
                 db_prof = FinancialProfile(id=str(uuid4()), user_id=user_id, name=db_user.name, email=db_user.email)

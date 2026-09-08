@@ -5,6 +5,7 @@ import { useFinance } from "../context/FinanceContext";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { currency } from "../lib/format";
+import { demoProfile } from "../lib/demoProfile";
 
 function computeTierInfo(income, dependents = 0, incomeType = "Salaried") {
   const inc = Number(income) || 0;
@@ -96,21 +97,33 @@ function computeTierInfo(income, dependents = 0, incomeType = "Salaried") {
 export function Profile() {
   const { user } = useAuth();
   const { profile, saveProfile } = useFinance();
-  const [draft, setDraft] = useState(() => ({
-    ...profile,
-    name: (user?.name && profile?.name === "Arjun Verma") ? user.name : (profile?.name || user?.name || "Client"),
-    email: (user?.email && profile?.email === "arjun.verma@example.com") ? user.email : (profile?.email || user?.email || ""),
-  }));
+  const [draft, setDraft] = useState(() => {
+    const expenses = (profile?.monthly_expenses?.length ? profile.monthly_expenses : profile?.detailed_expenses) || demoProfile.monthly_expenses;
+    return {
+      ...demoProfile,
+      ...profile,
+      monthly_expenses: expenses,
+      detailed_expenses: expenses,
+      name: (user?.name && profile?.name === "Arjun Verma") ? user.name : (profile?.name || user?.name || "Client"),
+      email: (user?.email && profile?.email === "arjun.verma@example.com") ? user.email : (profile?.email || user?.email || ""),
+    };
+  });
   const [saved, setSaved] = useState(false);
   const [showTierReason, setShowTierReason] = useState(false);
 
   useEffect(() => {
     if (profile) {
-      setDraft((current) => ({
-        ...profile,
-        name: (user?.name && profile?.name === "Arjun Verma") ? user.name : (profile?.name || current.name || user?.name || "Client"),
-        email: (user?.email && profile?.email === "arjun.verma@example.com") ? user.email : (profile?.email || current.email || user?.email || ""),
-      }));
+      setDraft((current) => {
+        const expenses = (profile.monthly_expenses?.length ? profile.monthly_expenses : profile.detailed_expenses) || current.monthly_expenses || demoProfile.monthly_expenses;
+        return {
+          ...current,
+          ...profile,
+          monthly_expenses: expenses,
+          detailed_expenses: expenses,
+          name: (user?.name && profile?.name === "Arjun Verma") ? user.name : (profile?.name || current.name || user?.name || "Client"),
+          email: (user?.email && profile?.email === "arjun.verma@example.com") ? user.email : (profile?.email || current.email || user?.email || ""),
+        };
+      });
     }
   }, [profile, user]);
 
@@ -129,8 +142,9 @@ export function Profile() {
   }
 
   function updateExpense(index, amount) {
-    const monthly_expenses = draft.monthly_expenses.map((item, i) => i === index ? { ...item, amount: Number(amount) } : item);
-    setDraft((current) => ({ ...current, monthly_expenses }));
+    const num = Number(amount);
+    const monthly_expenses = (draft.monthly_expenses || []).map((item, i) => i === index ? { ...item, amount: num } : item);
+    setDraft((current) => ({ ...current, monthly_expenses, detailed_expenses: monthly_expenses }));
   }
 
   return (

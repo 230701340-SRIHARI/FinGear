@@ -4,6 +4,7 @@ import { Outlet, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useFinance } from "../../context/FinanceContext";
 import { MenuOverlay } from "./MenuOverlay";
+import { ErrorBoundary } from "../ErrorBoundary";
 
 const PAGE_TITLES = {
   "/dashboard": "Dashboard",
@@ -85,7 +86,9 @@ export function AppShell() {
       </svg>
 
       <section className="page-stage">
-        <Outlet />
+        <ErrorBoundary key={location.pathname}>
+          <Outlet />
+        </ErrorBoundary>
       </section>
     </div>
   );

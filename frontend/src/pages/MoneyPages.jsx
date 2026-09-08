@@ -31,23 +31,23 @@ function getCategoryTag(category, type) {
 
 
 export function Transactions() {
-  const { 
-    transactions, 
-    recurring, 
-    addTransaction, 
-    deleteTransaction, 
-    restoreTransaction, 
-    updateIncomeSuite, 
-    uploadBill, 
-    fetchDeletedTransactions, 
-    acknowledgeAnomaly, 
+  const {
+    transactions,
+    recurring,
+    addTransaction,
+    deleteTransaction,
+    restoreTransaction,
+    updateIncomeSuite,
+    uploadBill,
+    fetchDeletedTransactions,
+    acknowledgeAnomaly,
     excludeAnomaly,
     addRecurringTransaction,
     updateRecurringTransaction,
     deleteRecurringTransaction,
     processRecurring,
   } = useFinance();
-  
+
   const [activeTab, setActiveTab] = useState("active"); // "active" | "recurring" | "deleted"
   const [showForm, setShowForm] = useState(false);
   const [query, setQuery] = useState("");
@@ -113,7 +113,7 @@ export function Transactions() {
     setRecurringFeedback("✓ Recurring commitment removed.");
     setTimeout(() => setRecurringFeedback(""), 4000);
   }
-  
+
   // Deleted transactions list
   const [deletedList, setDeletedList] = useState([]);
   const [loadingDeleted, setLoadingDeleted] = useState(false);
@@ -208,15 +208,15 @@ export function Transactions() {
 
   async function handleIncomeChoice(addToSuite, applyToAllMonths) {
     if (!pendingIncomeForm) return;
-    
+
     // Save transaction first
     await addTransaction(pendingIncomeForm);
-    
+
     // Update profile monthly income suite if requested
     if (addToSuite) {
       await updateIncomeSuite(pendingIncomeForm.amount, applyToAllMonths);
     }
-    
+
     resetForm();
   }
 
@@ -771,10 +771,10 @@ export function Budget() {
 
   return (
     <>
-      <PageHeader 
-        eyebrow="Budget" 
-        title="Monthly Budget Control & Tier Benchmarks" 
-        subtitle="Planned vs actual category spending benchmarked against your verified transactions and income tier." 
+      <PageHeader
+        eyebrow="Budget"
+        title="Monthly Budget Control & Tier Benchmarks"
+        subtitle="Planned vs actual category spending benchmarked against your verified transactions and income tier."
         actions={
           <Button variant={editing ? "secondary" : "primary"} onClick={() => { setEditing(!editing); setDraftItems(items); }}>
             <Pencil size={15} /> {editing ? "Cancel Editing" : "Customize Budgets"}
@@ -828,13 +828,13 @@ export function Budget() {
             {draftItems.map((item, idx) => (
               <div key={item.category} style={{ display: "grid", gridTemplateColumns: "180px 1fr 40px", alignItems: "center", gap: "12px" }}>
                 <strong>{item.category}</strong>
-                <NumberInput 
-                  value={item.planned} 
-                  onChange={(val) => handleDraftChange(idx, val)} 
+                <NumberInput
+                  value={item.planned}
+                  onChange={(val) => handleDraftChange(idx, val)}
                   min="0"
                 />
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => handleRemoveDraftItem(idx)}
                   className="icon-button danger"
                   title="Remove category"
@@ -848,16 +848,16 @@ export function Budget() {
 
           <form onSubmit={handleAddCategory} style={{ display: "flex", gap: "10px", marginTop: "16px", paddingTop: "14px", borderTop: "1px solid var(--border-color)", alignItems: "flex-end" }}>
             <Field label="Add Category" style={{ flex: 1 }}>
-              <input 
-                placeholder="e.g. Subscriptions, Gym, Fuel" 
-                value={newCat} 
-                onChange={(e) => setNewCat(e.target.value)} 
+              <input
+                placeholder="e.g. Subscriptions, Gym, Fuel"
+                value={newCat}
+                onChange={(e) => setNewCat(e.target.value)}
               />
             </Field>
             <Field label="Planned Limit" style={{ width: "160px" }}>
-              <NumberInput 
-                value={newAmount} 
-                onChange={(val) => setNewAmount(val)} 
+              <NumberInput
+                value={newAmount}
+                onChange={(val) => setNewAmount(val)}
                 min="100"
               />
             </Field>
@@ -1041,23 +1041,23 @@ export function Goals() {
 
   return (
     <>
-      <PageHeader 
-        eyebrow="Goals" 
-        title="Goal Planning & Feasibility Intelligence" 
-        subtitle="Transparent financial trajectory engine: Understand exactly what is happening now, what will happen at your current pace, and how to reach your targets." 
+      <PageHeader
+        eyebrow="Goals"
+        title="Goal Planning & Feasibility Intelligence"
+        subtitle="Transparent financial trajectory engine: Understand exactly what is happening now, what will happen at your current pace, and how to reach your targets."
         actions={
-          <Button onClick={() => { 
-            setForm({ name: "", target_amount: 150000, current_amount: 0, monthly_contribution: 10000, target_date: defaultTargetDate(), goal_type: "Custom" }); 
-            setEditingGoalName(null); 
-            setShowForm(true); 
+          <Button onClick={() => {
+            setForm({ name: "", target_amount: 150000, current_amount: 0, monthly_contribution: 10000, target_date: defaultTargetDate(), goal_type: "Custom" });
+            setEditingGoalName(null);
+            setShowForm(true);
           }}>
             <Plus size={17} /> Create Goal
           </Button>
-        } 
+        }
       />
 
       <section className="goal-planner-grid">
-        {goals.analysis.length ? goals.analysis.map((goal) => {
+        {(goals?.analysis || []).length ? (goals.analysis || []).map((goal) => {
           const deficit = goal.monthly_deficit ?? Math.max(0, (goal.required_monthly || 0) - (goal.planned_monthly || 0));
           const projected = goal.projected_amount_at_deadline ?? Math.min(goal.target_amount, goal.current_amount + ((goal.monthly_contribution || 0) * (goal.target_months || 12)));
           const shortfall = goal.shortfall ?? Math.max(0, goal.target_amount - projected);
@@ -1124,15 +1124,15 @@ export function Goals() {
               <Progress value={goal.achievement_probability} tone={isOnTrack ? "success" : "warning"} />
 
               {/* SECTION 1: WHAT IS HAPPENING NOW */}
-              <div style={{ 
-                background: "rgba(255, 255, 255, 0.02)", 
-                border: "1px solid var(--border-color)", 
-                borderRadius: "8px", 
-                padding: "12px 14px", 
-                margin: "14px 0 10px" 
+              <div style={{
+                background: "rgba(255, 255, 255, 0.02)",
+                border: "1px solid var(--border-color)",
+                borderRadius: "8px",
+                padding: "12px 14px",
+                margin: "14px 0 10px"
               }}>
                 <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--accent)", marginBottom: "8px" }}>
-                  What is Happening Now (Current Reality)
+                  Current:
                 </div>
                 <div className="grid-3" style={{ gap: "10px", fontSize: "12px" }}>
                   <div>
@@ -1155,15 +1155,15 @@ export function Goals() {
               </div>
 
               {/* SECTION 2: WHAT WILL HAPPEN */}
-              <div style={{ 
-                background: isOnTrack ? "rgba(16, 185, 129, 0.05)" : "rgba(245, 158, 11, 0.06)", 
-                border: `1px solid ${isOnTrack ? "rgba(16, 185, 129, 0.2)" : "rgba(245, 158, 11, 0.25)"}`, 
-                borderRadius: "8px", 
-                padding: "12px 14px", 
-                marginBottom: "14px" 
+              <div style={{
+                background: isOnTrack ? "rgba(16, 185, 129, 0.05)" : "rgba(245, 158, 11, 0.06)",
+                border: `1px solid ${isOnTrack ? "rgba(16, 185, 129, 0.2)" : "rgba(245, 158, 11, 0.25)"}`,
+                borderRadius: "8px",
+                padding: "12px 14px",
+                marginBottom: "14px"
               }}>
                 <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: isOnTrack ? "var(--accent-success)" : "var(--accent-warning)", marginBottom: "6px" }}>
-                  What Will Happen (Projection Outcome)
+                  Projection:
                 </div>
                 {isOnTrack ? (
                   <p style={{ margin: 0, fontSize: "13px", color: "var(--text-primary)" }}>
@@ -1180,7 +1180,7 @@ export function Goals() {
               {!isOnTrack && (
                 <div style={{ marginTop: "12px" }}>
                   <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-primary)", marginBottom: "8px" }}>
-                    Choose a Clear Strategy to Reach Your Goal:
+                    Choose a Strategy:
                   </div>
 
                   <div className="option-grid" style={{ display: "grid", gap: "10px" }}>
@@ -1192,22 +1192,22 @@ export function Goals() {
                           Increase monthly saving by <strong>+{currency(pathASip)}/mo</strong> (Total: {currency(goal.required_monthly)}/mo) to finish exactly on time by {goal.target_date}.
                         </p>
                       </div>
-                      <Button 
-                        variant="secondary" 
+                      <Button
+                        variant="secondary"
                         style={{ flexShrink: 0 }}
-                        onClick={() => navigate('/simulator', { 
-                          state: { 
-                            target_goal_name: goal.name, 
-                            scenario: { 
-                              name: `Accelerate ${goal.name}`, 
-                              scenario_type: "Increase SIP", 
+                        onClick={() => navigate('/simulator', {
+                          state: {
+                            target_goal_name: goal.name,
+                            scenario: {
+                              name: `Accelerate ${goal.name}`,
+                              scenario_type: "Increase SIP",
                               target_goal_name: goal.name,
-                              extra_monthly_investment: pathASip, 
-                              income_change: 0, 
-                              expense_change: 0, 
-                              new_monthly_loan_payment: 0 
-                            } 
-                          } 
+                              extra_monthly_investment: pathASip,
+                              income_change: 0,
+                              expense_change: 0,
+                              new_monthly_loan_payment: 0
+                            }
+                          }
                         })}
                       >
                         <Play size={13} /> Test Path A
@@ -1222,22 +1222,22 @@ export function Goals() {
                           Boost SIP by <strong>+{currency(pathBSip)}/mo</strong> and trim non-essential wants by <strong>-{currency(pathBCut)}/mo</strong> without needing new income.
                         </p>
                       </div>
-                      <Button 
-                        variant="secondary" 
+                      <Button
+                        variant="secondary"
                         style={{ flexShrink: 0 }}
-                        onClick={() => navigate('/simulator', { 
-                          state: { 
-                            target_goal_name: goal.name, 
-                            scenario: { 
-                              name: `Balanced Diet for ${goal.name}`, 
-                              scenario_type: "Multi-Factor Adjustment", 
+                        onClick={() => navigate('/simulator', {
+                          state: {
+                            target_goal_name: goal.name,
+                            scenario: {
+                              name: `Balanced Diet for ${goal.name}`,
+                              scenario_type: "Multi-Factor Adjustment",
                               target_goal_name: goal.name,
-                              extra_monthly_investment: pathBSip, 
-                              expense_change: -pathBCut, 
-                              income_change: 0, 
-                              new_monthly_loan_payment: 0 
-                            } 
-                          } 
+                              extra_monthly_investment: pathBSip,
+                              expense_change: -pathBCut,
+                              income_change: 0,
+                              new_monthly_loan_payment: 0
+                            }
+                          }
                         })}
                       >
                         <Play size={13} /> Test Path B
@@ -1247,13 +1247,13 @@ export function Goals() {
                     {/* PATH C: Timeline Realignment */}
                     <div style={{ background: "rgba(255, 255, 255, 0.02)", border: "1px solid var(--border-color)", borderRadius: "8px", padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px" }}>
                       <div>
-                        <strong style={{ fontSize: "13px", color: "var(--text-muted)" }}>Path C: Realistic Timeline Extension (₹0 Extra)</strong>
+                        <strong style={{ fontSize: "13px", color: "var(--text-muted)" }}>Path C: Timeline Extension (₹0 Extra)</strong>
                         <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--text-secondary)" }}>
                           Keep your current <strong>{currency(goal.monthly_contribution)}/mo</strong> contribution. Extend target horizon by {delayMonths} months to finish safely without cash strain.
                         </p>
                       </div>
-                      <Button 
-                        variant="ghost" 
+                      <Button
+                        variant="ghost"
                         style={{ flexShrink: 0 }}
                         onClick={() => {
                           setForm(goal);
@@ -1287,10 +1287,10 @@ export function Goals() {
               </span>
               <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                 {GOAL_PRESETS.map((preset) => (
-                  <Button 
-                    key={preset.name} 
-                    variant="secondary" 
-                    type="button" 
+                  <Button
+                    key={preset.name}
+                    variant="secondary"
+                    type="button"
                     style={{ fontSize: "11px", padding: "4px 10px", height: "auto" }}
                     onClick={() => applyPreset(preset)}
                   >
@@ -1303,16 +1303,16 @@ export function Goals() {
 
           <form className="form-grid" onSubmit={submit}>
             <Field label="Goal name">
-              <input 
-                value={form.name} 
-                onChange={(event) => update("name", event.target.value)} 
-                placeholder="Emergency fund, Bike, MBA, Vacation..." 
-                required 
+              <input
+                value={form.name}
+                onChange={(event) => update("name", event.target.value)}
+                placeholder="Emergency fund, Bike, MBA, Vacation..."
+                required
               />
             </Field>
             <Field label="Goal type">
               <select value={form.goal_type} onChange={(event) => update("goal_type", event.target.value)}>
-                {["Custom","Emergency","Education","Vehicle","Home","Travel","Investment","Retirement"].map((item) => (
+                {["Custom", "Emergency", "Education", "Vehicle", "Home", "Travel", "Investment", "Retirement"].map((item) => (
                   <option key={item}>{item}</option>
                 ))}
               </select>
@@ -1327,12 +1327,12 @@ export function Goals() {
               <NumberInput min="0" value={form.monthly_contribution} onChange={(val) => update("monthly_contribution", val)} required />
             </Field>
             <Field label="Target deadline">
-              <input 
-                type="date" 
-                value={form.target_date} 
-                onInput={(event) => update("target_date", event.currentTarget.value)} 
-                onChange={(event) => update("target_date", event.currentTarget.value)} 
-                required 
+              <input
+                type="date"
+                value={form.target_date}
+                onInput={(event) => update("target_date", event.currentTarget.value)}
+                onChange={(event) => update("target_date", event.currentTarget.value)}
+                required
               />
             </Field>
             {formError && <div className="inline-error form-wide">{formError}</div>}
@@ -1424,14 +1424,14 @@ function getInvestmentFlow(item) {
 export function Investments() {
   const { investments, forecast, profile } = useFinance();
   const [allocView, setAllocView] = useState("current");
-  const riskProfile = investments.risk_profile || { appetite: profile?.risk_appetite || "Moderate" };
+  const riskProfile = investments?.risk_profile || { appetite: profile?.risk_appetite || "Moderate" };
 
-  const displayedAllocation = allocView === "recommended" 
-    ? (investments.recommended_allocation || investments.allocation)
-    : investments.allocation;
+  const currentAllocation = investments?.allocation || [];
+  const recommendedAllocation = investments?.recommended_allocation || [];
 
-  const currentAllocation = investments.allocation || [];
-  const recommendedAllocation = investments.recommended_allocation || [];
+  const displayedAllocation = allocView === "recommended"
+    ? (investments?.recommended_allocation || currentAllocation)
+    : currentAllocation;
 
   const totalCurrentValue = useMemo(() => {
     return currentAllocation.reduce((sum, it) => sum + (Number(it.value) || 0), 0);
@@ -1465,12 +1465,24 @@ export function Investments() {
     });
   }, [currentAllocation, recommendedAllocation, totalCurrentValue, totalRecommendedValue]);
 
+  const emergencyRunway = useMemo(() => {
+    const ef = Number(profile?.emergency_fund) || 0;
+    const expList = profile?.detailed_expenses?.length ? profile.detailed_expenses : (profile?.monthly_expenses || []);
+    let expTotal = expList.reduce((acc, item) => acc + (Number(item?.amount) || 0), 0);
+    if (expTotal <= 0 && Number(profile?.monthly_income) > 0) {
+      expTotal = Number(profile.monthly_income) * 0.70;
+    }
+    const debtEmi = Number(profile?.monthly_debt_payment) || 0;
+    const monthlyBurn = Math.max(expTotal + debtEmi, 1);
+    return (ef / monthlyBurn).toFixed(1);
+  }, [profile]);
+
   return (
     <>
-      <PageHeader 
-        eyebrow="Investments & Wealth Compounding" 
-        title="Portfolio & Asset Overview" 
-        subtitle="Dynamic risk-calibrated asset allocations and rebalancing tailored to your risk appetite and primary goal." 
+      <PageHeader
+        eyebrow="Investments & Wealth Compounding"
+        title="Portfolio & Asset Overview"
+        subtitle="Dynamic risk-calibrated asset allocations and rebalancing tailored to your risk appetite and primary goal."
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <Badge tone={riskProfile.appetite === "Aggressive" ? "ai" : riskProfile.appetite === "Conservative" ? "warning" : "info"}>
@@ -1486,7 +1498,7 @@ export function Investments() {
       />
       <section className="metric-grid">
         <MetricCard icon={<WalletCards />} label="Total Investments" value={currency(investments.total)} detail="Asset portfolio" tone="success" />
-        <MetricCard icon={<ShieldAlert />} label="Emergency Reserve" value={currency(profile?.emergency_fund || 0)} detail={`${((profile?.emergency_fund || 0) / Math.max(1, (profile?.emergency_target || 200000)) * 100).toFixed(0)}% of target`} tone="info" />
+        <MetricCard icon={<ShieldAlert />} label="Emergency Reserve" value={currency(profile?.emergency_fund || 0)} detail={`${emergencyRunway} mos runway · ${((profile?.emergency_fund || 0) / Math.max(1, (profile?.emergency_target || 200000)) * 100).toFixed(0)}% of target`} tone={Number(emergencyRunway) >= 6.0 ? "success" : (Number(emergencyRunway) >= 3.0 ? "info" : "warning")} />
         <MetricCard icon={<TrendingUp />} label="Monthly Contribution" value={currency(investments.monthly_contribution)} detail="Active SIP & Inflows" tone="info" />
         <MetricCard icon={<Activity />} label="Estimated Return" value={`${investments.estimated_return || 11.5}% p.a.`} detail={`${riskProfile.appetite} risk posture`} tone="ai" />
       </section>
@@ -1514,15 +1526,15 @@ export function Investments() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
             <div className="section-title" style={{ margin: 0 }}>Asset allocation</div>
             <div style={{ display: "flex", gap: "6px" }}>
-              <Button 
-                variant={allocView === "current" ? "primary" : "secondary"} 
+              <Button
+                variant={allocView === "current" ? "primary" : "secondary"}
                 onClick={() => setAllocView("current")}
                 style={{ padding: "4px 8px", fontSize: "11px" }}
               >
                 Current Portfolio
               </Button>
-              <Button 
-                variant={allocView === "recommended" ? "primary" : "secondary"} 
+              <Button
+                variant={allocView === "recommended" ? "primary" : "secondary"}
                 onClick={() => setAllocView("recommended")}
                 style={{ padding: "4px 8px", fontSize: "11px" }}
               >
@@ -1542,19 +1554,19 @@ export function Investments() {
                 <thead>
                   <tr style={{ background: 'var(--surface-hover)', borderBottom: '1px solid var(--border-color)' }}>
                     <th style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--text-secondary)' }}>Asset Class</th>
-                    <th style={{ 
-                      padding: '8px 10px', 
-                      textAlign: 'right', 
-                      fontWeight: 600, 
+                    <th style={{
+                      padding: '8px 10px',
+                      textAlign: 'right',
+                      fontWeight: 600,
                       color: allocView === 'current' ? 'var(--accent)' : 'var(--text-secondary)',
                       background: allocView === 'current' ? 'rgba(59, 130, 246, 0.06)' : 'transparent'
                     }}>
                       Current {allocView === 'current' ? '●' : ''}
                     </th>
-                    <th style={{ 
-                      padding: '8px 10px', 
-                      textAlign: 'right', 
-                      fontWeight: 600, 
+                    <th style={{
+                      padding: '8px 10px',
+                      textAlign: 'right',
+                      fontWeight: 600,
                       color: allocView === 'recommended' ? 'var(--accent)' : 'var(--text-secondary)',
                       background: allocView === 'recommended' ? 'rgba(59, 130, 246, 0.06)' : 'transparent'
                     }}>
@@ -1583,19 +1595,19 @@ export function Investments() {
                     return (
                       <tr key={row.name} style={{ borderBottom: '1px solid var(--border-color)' }}>
                         <td style={{ padding: '8px 10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ 
-                            width: '8px', 
-                            height: '8px', 
-                            borderRadius: '50%', 
-                            backgroundColor: row.color, 
+                          <span style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: row.color,
                             display: 'inline-block',
                             boxShadow: `0 0 6px ${row.color}88`,
                             flexShrink: 0
                           }} />
                           <strong style={{ color: 'var(--text-primary)', fontSize: '12px' }}>{row.name}</strong>
                         </td>
-                        <td style={{ 
-                          padding: '8px 10px', 
+                        <td style={{
+                          padding: '8px 10px',
                           textAlign: 'right',
                           background: allocView === 'current' ? 'rgba(59, 130, 246, 0.04)' : 'transparent'
                         }}>
@@ -1606,8 +1618,8 @@ export function Investments() {
                             {row.currentPct}%
                           </span>
                         </td>
-                        <td style={{ 
-                          padding: '8px 10px', 
+                        <td style={{
+                          padding: '8px 10px',
                           textAlign: 'right',
                           background: allocView === 'recommended' ? 'rgba(59, 130, 246, 0.04)' : 'transparent'
                         }}>
@@ -1619,9 +1631,9 @@ export function Investments() {
                           </span>
                         </td>
                         <td style={{ padding: '8px 10px', textAlign: 'right' }}>
-                          <span style={{ 
-                            fontSize: '11px', 
-                            fontWeight: 600, 
+                          <span style={{
+                            fontSize: '11px',
+                            fontWeight: 600,
                             color: driftTone,
                             padding: '2px 5px',
                             borderRadius: '4px',
@@ -1639,16 +1651,16 @@ export function Investments() {
                 <tfoot>
                   <tr style={{ background: 'var(--surface-hover)', fontWeight: 600, fontSize: '12px' }}>
                     <td style={{ padding: '8px 10px', color: 'var(--text-primary)' }}>Total</td>
-                    <td style={{ 
-                      padding: '8px 10px', 
+                    <td style={{
+                      padding: '8px 10px',
                       textAlign: 'right',
                       background: allocView === 'current' ? 'rgba(59, 130, 246, 0.06)' : 'transparent'
                     }}>
                       <span style={{ color: 'var(--text-primary)', display: 'block' }}>{currency(totalCurrentValue)}</span>
                       <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>100%</span>
                     </td>
-                    <td style={{ 
-                      padding: '8px 10px', 
+                    <td style={{
+                      padding: '8px 10px',
                       textAlign: 'right',
                       background: allocView === 'recommended' ? 'rgba(59, 130, 246, 0.06)' : 'transparent'
                     }}>
@@ -1752,8 +1764,8 @@ export function Debt() {
     remaining_months: 36,
   });
 
-  const items = debt.items || [];
-  const payoff = useMemo(() => `${debt.debt_free_months || 0} months`, [debt]);
+  const items = debt?.items || [];
+  const payoff = useMemo(() => `${debt?.debt_free_months || 0} months`, [debt]);
 
   async function handleAddDebt(e) {
     e.preventDefault();
@@ -1807,10 +1819,10 @@ export function Debt() {
 
   return (
     <>
-      <PageHeader 
-        eyebrow="Debt Management" 
-        title="Liabilities & EMI Payoff Control" 
-        subtitle="Track loan obligations, interest burdens, and tailored accelerated payoff recommendations." 
+      <PageHeader
+        eyebrow="Debt Management"
+        title="Liabilities & EMI Payoff Control"
+        subtitle="Track loan obligations, interest burdens, and tailored accelerated payoff recommendations."
         actions={
           <Button onClick={() => {
             setDebtForm({ name: "", principal: 500000, outstanding: 400000, interest_rate: 10.5, emi: 12000, remaining_months: 36 });
@@ -1828,9 +1840,9 @@ export function Debt() {
       )}
 
       <section className="metric-grid">
-        <MetricCard icon={<CreditCard />} label="Total Debt" value={currency(debt.total)} detail="Outstanding balance" tone="warning" />
-        <MetricCard icon={<Calendar />} label="Monthly EMI" value={currency(debt.monthly_emi)} detail="Total monthly outflow" tone="info" />
-        <MetricCard icon={<Activity />} label="Debt-to-Income" value={percent(debt.debt_to_income)} detail="Safer range is below 30%" tone="success" />
+        <MetricCard icon={<CreditCard />} label="Total Debt" value={currency(debt?.total || 0)} detail="Outstanding balance" tone="warning" />
+        <MetricCard icon={<Calendar />} label="Monthly EMI" value={currency(debt?.monthly_emi || 0)} detail="Total monthly outflow" tone="info" />
+        <MetricCard icon={<Activity />} label="Debt-to-Income" value={percent(debt?.debt_to_income || 0)} detail="Safer range is below 30%" tone="success" />
         <MetricCard icon={<GoalIcon />} label="Est. Debt Free" value={payoff} detail="Based on current schedule" tone="ai" />
       </section>
 
@@ -1841,55 +1853,55 @@ export function Debt() {
           <form onSubmit={handleAddDebt} style={{ display: "grid", gap: "14px", marginTop: "14px" }}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
               <Field label="Loan / Debt Name">
-                <input 
-                  required 
-                  placeholder="e.g. HDFC Home Loan, Car Loan, Education Loan" 
-                  value={debtForm.name} 
-                  onChange={(e) => setDebtForm({ ...debtForm, name: e.target.value })} 
+                <input
+                  required
+                  placeholder="e.g. HDFC Home Loan, Car Loan, Education Loan"
+                  value={debtForm.name}
+                  onChange={(e) => setDebtForm({ ...debtForm, name: e.target.value })}
                 />
               </Field>
               <Field label="Original Principal (₹)">
-                <NumberInput 
-                  required 
-                  value={debtForm.principal} 
-                  onChange={(val) => setDebtForm({ ...debtForm, principal: val, outstanding: debtForm.outstanding || val })} 
+                <NumberInput
+                  required
+                  value={debtForm.principal}
+                  onChange={(val) => setDebtForm({ ...debtForm, principal: val, outstanding: debtForm.outstanding || val })}
                   min="1000"
                 />
               </Field>
               <Field label="Current Outstanding (₹)">
-                <NumberInput 
-                  required 
-                  value={debtForm.outstanding} 
-                  onChange={(val) => setDebtForm({ ...debtForm, outstanding: val })} 
+                <NumberInput
+                  required
+                  value={debtForm.outstanding}
+                  onChange={(val) => setDebtForm({ ...debtForm, outstanding: val })}
                   min="0"
                 />
               </Field>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
               <Field label="Interest Rate (% p.a.)">
-                <input 
-                  type="number" 
-                  step="0.1" 
-                  required 
-                  value={debtForm.interest_rate} 
-                  onChange={(e) => setDebtForm({ ...debtForm, interest_rate: e.target.value })} 
+                <input
+                  type="number"
+                  step="0.1"
+                  required
+                  value={debtForm.interest_rate}
+                  onChange={(e) => setDebtForm({ ...debtForm, interest_rate: e.target.value })}
                 />
               </Field>
               <Field label="Monthly EMI (₹)">
-                <NumberInput 
-                  required 
-                  value={debtForm.emi} 
-                  onChange={(val) => setDebtForm({ ...debtForm, emi: val })} 
+                <NumberInput
+                  required
+                  value={debtForm.emi}
+                  onChange={(val) => setDebtForm({ ...debtForm, emi: val })}
                   min="100"
                 />
               </Field>
               <Field label="Remaining Tenure (Months)">
-                <input 
-                  type="number" 
-                  required 
-                  min="1" 
-                  value={debtForm.remaining_months} 
-                  onChange={(e) => setDebtForm({ ...debtForm, remaining_months: e.target.value })} 
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  value={debtForm.remaining_months}
+                  onChange={(e) => setDebtForm({ ...debtForm, remaining_months: e.target.value })}
                 />
               </Field>
             </div>
@@ -1912,9 +1924,9 @@ export function Debt() {
           </p>
           <form onSubmit={handlePrepay} style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
             <Field label="Prepayment Amount (₹)" style={{ minWidth: "220px" }}>
-              <NumberInput 
-                value={prepayAmount} 
-                onChange={(val) => setPrepayAmount(val)} 
+              <NumberInput
+                value={prepayAmount}
+                onChange={(val) => setPrepayAmount(val)}
                 min="500"
                 max={prepayTarget.outstanding}
               />
@@ -1944,16 +1956,16 @@ export function Debt() {
                   <strong style={{ fontSize: '18px', color: 'var(--text-primary)' }}>{item.name}</strong>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Badge tone="warning">{item.remaining_months} months remaining</Badge>
-                    <Button 
-                      variant="secondary" 
-                      onClick={() => { setPrepayTarget(item); setPrepayAmount(Math.min(25000, item.outstanding)); }} 
+                    <Button
+                      variant="secondary"
+                      onClick={() => { setPrepayTarget(item); setPrepayAmount(Math.min(25000, item.outstanding)); }}
                       style={{ padding: '4px 10px', fontSize: '12px' }}
                     >
                       Prepay
                     </Button>
-                    <button 
-                      type="button" 
-                      className="icon-button danger" 
+                    <button
+                      type="button"
+                      className="icon-button danger"
                       onClick={() => handleDelete(item)}
                       title="Remove or Mark Paid Off"
                       style={{ padding: '6px' }}
@@ -2000,9 +2012,9 @@ export function Debt() {
         </section>
       ) : (
         <Card>
-          <EmptyState 
-            title="No active debt obligations" 
-            detail="You are currently debt-free! If you want to track a home loan, car loan, education loan, or credit card liability, click 'Add Loan / Liability' above to monitor interest savings and accelerated payoff." 
+          <EmptyState
+            title="No active debt obligations"
+            detail="You are currently debt-free! If you want to track a home loan, car loan, education loan, or credit card liability, click 'Add Loan / Liability' above to monitor interest savings and accelerated payoff."
           />
         </Card>
       )}

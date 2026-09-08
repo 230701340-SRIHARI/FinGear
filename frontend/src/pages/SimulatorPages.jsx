@@ -60,8 +60,9 @@ export function Simulator() {
   const showInvestment = isCustom || scenario.scenario_type === "Increase SIP";
   const showEMI = isCustom || ["New Loan", "Vehicle Purchase", "Home Purchase"].includes(scenario.scenario_type);
 
-  const expenses = (profile.detailed_expenses?.length ? profile.detailed_expenses : profile.monthly_expenses).reduce((sum, item) => sum + item.amount, 0);
-  const cashFlow = profile.monthly_income - expenses - profile.monthly_debt_payment;
+  const expList = (profile?.detailed_expenses?.length ? profile.detailed_expenses : (profile?.monthly_expenses || []));
+  const expenses = expList.reduce((sum, item) => sum + (Number(item?.amount) || 0), 0);
+  const cashFlow = (Number(profile?.monthly_income) || 0) - expenses - (Number(profile?.monthly_debt_payment) || 0);
   const chart = result ? [
     { label: "Health", current: result.base_score, simulated: result.simulated_score },
     { label: "Cash flow", current: Math.round(result.base_cash_flow / 1000), simulated: Math.round(result.simulated_cash_flow / 1000) },
@@ -193,9 +194,9 @@ export function ScenarioHistory() {
     <>
       <PageHeader eyebrow="Scenario History" title="Saved decision simulations" subtitle="View, duplicate, delete and compare prior what-if runs." />
       <Card>
-        {scenarioHistory.history?.length ? (
+        {scenarioHistory?.history?.length ? (
           <div className="data-table">
-            {scenarioHistory.history.map((item) => (
+            {(scenarioHistory?.history || []).map((item) => (
               <article key={item.id}>
                 <History size={17} />
                 <strong>{item.name}</strong>

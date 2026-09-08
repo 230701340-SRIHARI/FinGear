@@ -28,12 +28,24 @@ from app.services.financial_health import (
 )
 
 
-def total_expenses(profile: FinancialProfile) -> float:
-    exp_list = getattr(profile, "detailed_expenses", None) or getattr(profile, "monthly_expenses", None) or []
-    total = sum(float(getattr(item, "amount", 0.0)) for item in exp_list)
-    if total <= 0 and float(profile.monthly_income or 0.0) > 0:
-        tier = get_tier_by_income(float(profile.monthly_income))
-        total = round(float(profile.monthly_income) * ((tier.needs_pct + tier.wants_pct) / 100.0), 2)
+def total_expenses(profile: FinancialProfile | dict) -> float:
+    if isinstance(profile, dict):
+        exp_list = profile.get("detailed_expenses") or profile.get("monthly_expenses") or []
+        income = float(profile.get("monthly_income") or 0.0)
+    else:
+        exp_list = getattr(profile, "detailed_expenses", None) or getattr(profile, "monthly_expenses", None) or []
+        income = float(getattr(profile, "monthly_income", 0.0) or 0.0)
+
+    total = 0.0
+    for item in exp_list:
+        if hasattr(item, "amount"):
+            total += float(item.amount or 0.0)
+        elif isinstance(item, dict):
+            total += float(item.get("amount") or 0.0)
+
+    if total <= 0 and income > 0:
+        tier = get_tier_by_income(income)
+        total = round(income * ((tier.needs_pct + tier.wants_pct) / 100.0), 2)
     return total
 
 
