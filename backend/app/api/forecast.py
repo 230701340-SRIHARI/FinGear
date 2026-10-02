@@ -10,7 +10,7 @@ router = APIRouter(prefix="/forecast", tags=["forecast"])
 
 @router.get("")
 def get_forecast(period: int = Query(default=24, ge=6, le=60), user_id: str = Depends(get_current_user_id)) -> dict:
-    state = memory.state_copy(user_id)
+    state = memory.get_state(user_id)
     profile = FinancialProfile(**state["profile"])
-    result = ForecastEngine().predict(profile, months=period, transactions=state.get("transactions", []))
+    result = ForecastEngine().predict(profile, months=period, transactions=state.get("transactions", []), user_id=user_id)
     return result.__dict__

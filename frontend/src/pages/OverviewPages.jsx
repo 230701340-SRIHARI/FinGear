@@ -5,7 +5,8 @@ import { AllocationChart, HealthTrendChart, IncomeExpenseChart, NetWorthChart } 
 import { Badge, Button, Card, MetricCard, NumberInput, PageHeader, Progress, QuickLinks } from "../components/ui";
 import { useFinance } from "../context/FinanceContext";
 import { useAuth } from "../context/AuthContext";
-import { currency } from "../lib/format";
+import { currency, percent } from "../lib/format";
+import { demoProfile } from "../lib/demoProfile";
 
 export function Dashboard() {
   const { user } = useAuth();
@@ -381,17 +382,35 @@ export function Dashboard() {
 }
 
 export function FinancialTwin() {
-  const { profile, health, goals } = useFinance();
+  const { profile, health, goals, debt } = useFinance();
+  const totalIncome = (Number(profile?.monthly_income) || 0) + (Number(profile?.other_income) || 0);
   const expensesList = profile?.detailed_expenses?.length ? profile.detailed_expenses : (profile?.monthly_expenses || []);
   const expenses = useMemo(() => expensesList.reduce((sum, item) => sum + (Number(item?.amount) || 0), 0), [expensesList]);
+
+  const activeDebts = useMemo(() => (debt?.items || []).filter((d) => d.status !== "paid_off"), [debt?.items]);
+  const totalDebt = Number(debt?.total ?? profile?.total_debt ?? 0);
+  const debtPayment = Number(debt?.monthly_emi ?? profile?.monthly_debt_payment ?? 0);
+  const tangibleAssets = (Number(profile?.savings_balance) || 0)
+    + (Number(profile?.emergency_fund) || 0)
+    + (Number(profile?.investments_balance) || 0)
+    + (Number(profile?.mutual_funds) || 0)
+    + (Number(profile?.stocks) || 0)
+    + (Number(profile?.fixed_deposits) || 0)
+    + (Number(profile?.provident_fund) || 0)
+    + (Number(profile?.real_estate_value) || 0)
+    + (Number(profile?.gold) || 0)
+    + (Number(profile?.crypto_value) || 0);
+  const cashFlow = totalIncome - expenses - debtPayment;
+  const dtiRatio = totalIncome > 0 ? debtPayment / totalIncome : 0;
+
   const nodes = useMemo(() => [
-    { label: "Income", value: currency(profile?.monthly_income || 0), trend: "+ stable", x: 50, y: 18, tone: "success" },
-    { label: "Assets", value: currency((Number(profile?.savings_balance) || 0) + (Number(profile?.investments_balance) || 0)), trend: "+8.4% projected", x: 28, y: 42, tone: "info" },
-    { label: "Debt", value: currency(profile?.total_debt || 0), trend: "7% income burden", x: 72, y: 42, tone: "warning" },
-    { label: "Cash Flow", value: currency((Number(profile?.monthly_income) || 0) - expenses - (Number(profile?.monthly_debt_payment) || 0)), trend: "Decision capacity", x: 50, y: 55, tone: "ai" },
-    { label: "Goals", value: `${(profile?.goals || []).length} active`, trend: `${goals?.analysis?.[0]?.achievement_probability || 65}% achievable`, x: 34, y: 76, tone: "success" },
-    { label: "Future State", value: "24 months", trend: "Baseline projection", x: 66, y: 76, tone: "info" },
-  ], [profile, expenses, goals]);
+    { label: "Income", value: currency(totalIncome), trend: profile?.income_type ? `${profile.income_type} inflow` : "+ steady", x: 50, y: 16, tone: "success" },
+    { label: "Assets", value: currency(tangibleAssets), trend: "Savings & Portfolio", x: 22, y: 44, tone: "info" },
+    { label: "Liabilities / Debt", value: currency(totalDebt), trend: activeDebts.length > 0 ? `${activeDebts.length} active loan${activeDebts.length === 1 ? '' : 's'} (${percent(dtiRatio)} DTI)` : "0 debt balance", x: 78, y: 44, tone: totalDebt > 0 ? "warning" : "success" },
+    { label: "Net Cash Flow", value: currency(cashFlow), trend: cashFlow >= 0 ? "+ monthly surplus" : "deficit pace", x: 50, y: 56, tone: "ai" },
+    { label: "Goals", value: `${(profile?.goals || []).length} active`, trend: `${goals?.analysis?.[0]?.achievement_probability || 65}% achievable`, x: 32, y: 82, tone: "success" },
+    { label: "Future State", value: "24 months", trend: "Baseline projection", x: 68, y: 82, tone: "info" },
+  ], [profile, totalIncome, tangibleAssets, totalDebt, activeDebts, dtiRatio, cashFlow, goals]);
 
   return (
     <>
@@ -399,12 +418,30 @@ export function FinancialTwin() {
       <section className="twin-header-grid">
         <MetricCard icon={<ShieldCheck />} label="Twin health" value={health?.grade || "Good"} detail="Model stable" tone="success" />
         <MetricCard icon={<Activity />} label="Last recalculated" value="2 sec ago" detail="Local demo sync" tone="info" />
-        <MetricCard icon={<Gauge />} label="Model completeness" value="94%" detail="Profile, goals, debt, budget connected" tone="ai" />
+        <MetricCard icon={<Gauge />} label="Model completeness" value={activeDebts.length > 0 ? "98%" : "94%"} detail="Profile, goals, debt, budget connected" tone="ai" />
       </section>
-      <Card className="twin-visual" glow>
+      
+      <Card className="twin-visual">
         <div className="twin-grid-bg" />
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="twin-lines">
-          <path d="M50 20 L28 42 L50 55 L34 76 M50 20 L72 42 L50 55 L66 76" />
+          {/* Foundational Capital & Solvency Triangle: Income (50, 16) -> Assets (22, 44) -> Debt (78, 44) -> Income */}
+          <path d="M50 16 L22 44 L78 44 Z" className="twin-triangle" />
+          
+          {/* Operational Engine Convergence to Cash Flow (50, 56) */}
+          <path d="M50 16 L50 56" className="twin-flow-income" />
+          <path d="M22 44 L50 56" className="twin-flow-asset" />
+          <path d="M78 44 L50 56" className="twin-flow-debt" />
+          
+          {/* Forward Allocations: Cash Flow -> Goals & Future State */}
+          <path d="M50 56 L32 82 M50 56 L68 82" className="twin-flow-allocations" />
+          
+          {/* Coordinate Joint Markers */}
+          <circle cx="50" cy="16" r="1.5" className="twin-joint" />
+          <circle cx="22" cy="44" r="1.5" className="twin-joint" />
+          <circle cx="78" cy="44" r="1.5" className="twin-joint" />
+          <circle cx="50" cy="56" r="1.8" className="twin-joint" />
+          <circle cx="32" cy="82" r="1.5" className="twin-joint" />
+          <circle cx="68" cy="82" r="1.5" className="twin-joint" />
         </svg>
         {nodes.map((node) => (
           <div className={`twin-node ${node.tone}`} key={node.label} style={{ left: `${node.x}%`, top: `${node.y}%` }}>
@@ -414,11 +451,72 @@ export function FinancialTwin() {
           </div>
         ))}
       </Card>
-      <section className="grid-2">
+
+      {/* Twin Loan & Liabilities Portfolio Breakdown */}
+      {activeDebts.length > 0 && (
+        <Card style={{ marginTop: "20px" }}>
+          <div className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <CreditCard size={18} /> Active Loan & Liability Engine ({activeDebts.length} Tracked)
+            </span>
+            <Link to="/debt">
+              <Button variant="secondary" size="sm" style={{ fontSize: "12px" }}>
+                Manage in Debt Hub <ArrowRight size={14} />
+              </Button>
+            </Link>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "12px", marginTop: "14px" }}>
+            {activeDebts.map((item) => (
+              <div
+                key={item.id}
+                style={{
+                  border: "1px solid var(--border-color)",
+                  borderRadius: "4px",
+                  padding: "14px",
+                  background: "var(--bg-elevated)",
+                  display: "grid",
+                  gap: "8px"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                  <div>
+                    <strong style={{ fontSize: "14px", color: "var(--text-primary)", display: "block" }}>{item.name}</strong>
+                    <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                      {item.lender ? `${item.lender} • ` : ""}{item.loan_type || "Loan"}
+                      {item.account_number ? ` • Ref: ${item.account_number}` : ""}
+                    </span>
+                  </div>
+                  <Badge tone={item.is_secured ? "info" : "warning"}>
+                    {item.is_secured ? "Secured" : "Unsecured"}
+                  </Badge>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "13px" }}>
+                  <span style={{ color: "var(--text-secondary)" }}>Outstanding Balance:</span>
+                  <strong style={{ color: "var(--text-primary)", fontFamily: "var(--font-mono, monospace)" }}>
+                    {currency(item.outstanding)}
+                  </strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "12px", color: "var(--text-muted)" }}>
+                  <span>EMI: {currency(item.emi)}/mo (Day {item.emi_day || 5})</span>
+                  <span>{item.interest_rate}% {item.interest_type || "Floating"}</span>
+                </div>
+                {item.collateral && (
+                  <div style={{ fontSize: "11px", color: "var(--text-muted)", borderTop: "1px solid var(--border-color)", paddingTop: "6px" }}>
+                    Collateral: {item.collateral}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <section className="grid-2" style={{ marginTop: "20px" }}>
         <Card><div className="section-title"><Network /> How your twin works</div><div className="flow-line"><span>Profile Data</span><span>Financial State</span><span>Health Engine</span><span>Forecast Engine</span><span>Goal Engine</span><span>Decision Simulator</span><span>AI Copilot</span></div></Card>
         <Card><div className="section-title"><Landmark /> Financial state</div><div className="state-list">{["Income", "Expenses", "Savings", "Assets", "Investments", "Debt", "Goals", "Emergency Fund"].map((item) => <span key={item}>{item}</span>)}</div></Card>
       </section>
       <QuickLinks links={[
+        { to: '/debt', icon: CreditCard, label: 'Debt & Loans', detail: 'Manage loan commitments' },
         { to: '/health', icon: Activity, label: 'Health Assessment', detail: 'See what drives your score' },
         { to: '/simulator', icon: CircleDollarSign, label: 'Simulator', detail: 'Test changes to your twin' },
         { to: '/copilot', icon: BrainCircuit, label: 'AI Copilot', detail: 'Ask questions about your data' },
@@ -428,18 +526,121 @@ export function FinancialTwin() {
 }
 
 export function MyMoney() {
-  const { profile, transactions } = useFinance();
-  const expensesList = profile?.detailed_expenses?.length ? profile.detailed_expenses : (profile?.monthly_expenses || []);
+  const { profile, transactions, budget, debt } = useFinance();
+
+  const { expensesList, sourceLabel } = useMemo(() => {
+    if (profile?.detailed_expenses && profile.detailed_expenses.length > 0) {
+      return { expensesList: profile.detailed_expenses, sourceLabel: "Financial Profile" };
+    }
+    if (profile?.monthly_expenses && profile.monthly_expenses.length > 0) {
+      return { expensesList: profile.monthly_expenses, sourceLabel: "Monthly Expenses" };
+    }
+    if (transactions?.summary?.by_category && transactions.summary.by_category.length > 0) {
+      return {
+        expensesList: transactions.summary.by_category.map((c) => ({
+          category: c.category,
+          amount: c.amount,
+        })),
+        sourceLabel: "Logged Transactions"
+      };
+    }
+    if (budget?.items && budget.items.length > 0) {
+      return {
+        expensesList: budget.items.map((b) => ({
+          category: b.category,
+          amount: b.actual || b.planned || 0,
+        })),
+        sourceLabel: "Active Budget"
+      };
+    }
+    return {
+      expensesList: demoProfile.detailed_expenses || demoProfile.monthly_expenses || [],
+      sourceLabel: "Benchmark Baseline"
+    };
+  }, [profile?.detailed_expenses, profile?.monthly_expenses, transactions?.summary?.by_category, budget?.items]);
+
+  const totalExpenses = useMemo(() => {
+    return expensesList.reduce((sum, item) => sum + (Number(item?.amount) || 0), 0);
+  }, [expensesList]);
+
+  const monthlyIncome = (Number(profile?.monthly_income) || 0) + (Number(profile?.other_income) || 0);
+  const monthlyDebt = Number(debt?.monthly_emi ?? profile?.monthly_debt_payment ?? 0);
+  const netSurplus = monthlyIncome - totalExpenses - monthlyDebt;
+
   return (
     <>
       <PageHeader eyebrow="My Money" title="Unified financial state" subtitle="One operating view for income, expenses, savings, debt and goals." />
       <section className="metric-grid">
-        <MetricCard icon={<IndianRupee />} label="Income" value={currency(profile?.monthly_income || 0)} detail="Monthly" tone="success" />
-        <MetricCard icon={<Activity />} label="Expenses" value={currency(transactions?.summary?.expenses || 0)} detail="This month" tone="warning" />
-        <MetricCard icon={<WalletCards />} label="Investments" value={currency(profile?.investments_balance || 0)} detail="Current portfolio" tone="info" />
-        <MetricCard icon={<Goal />} label="Goals" value={(profile?.goals || []).length} detail="Active plans" tone="ai" />
+        <MetricCard icon={<IndianRupee />} label="Monthly Income" value={currency(monthlyIncome)} detail="Inflows" tone="success" />
+        <MetricCard icon={<Activity />} label="Monthly Expenses" value={currency(totalExpenses)} detail="Tracked burn" tone="warning" />
+        <MetricCard icon={<CreditCard />} label="Debt Commitments" value={currency(monthlyDebt)} detail="Monthly EMI" tone={monthlyDebt > 0 ? "warning" : "success"} />
+        <MetricCard icon={<TrendingUp />} label="Net Cash Flow" value={currency(netSurplus)} detail={netSurplus >= 0 ? "Monthly surplus" : "Deficit pace"} tone={netSurplus >= 0 ? "success" : "danger"} />
       </section>
-      <Card><div className="section-title">Money map</div><div className="state-list large">{expensesList.map((item) => <span key={item?.category || item?.name}>{item?.category || item?.name}: {currency(item?.amount || 0)}</span>)}</div></Card>
+
+      <Card>
+        <div className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <Compass size={18} /> Money Map & Expense Allocation
+          </span>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <Badge tone="info">{sourceLabel}</Badge>
+            <Badge tone="ai">{currency(totalExpenses)}/mo</Badge>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "12px", marginTop: "16px" }}>
+          {expensesList.map((item) => {
+            const name = item?.category || item?.name || "Expense";
+            const amt = Number(item?.amount) || 0;
+            const pct = totalExpenses > 0 ? Math.round((amt / totalExpenses) * 100) : 0;
+            return (
+              <div
+                key={name}
+                style={{
+                  background: "var(--bg-elevated, rgba(255, 255, 255, 0.03))",
+                  border: "1px solid var(--border-color, rgba(255, 255, 255, 0.08))",
+                  borderRadius: "10px",
+                  padding: "14px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{name}</strong>
+                  <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--accent-primary, #3b82f6)" }}>
+                    {currency(amt)}
+                  </span>
+                </div>
+                <Progress value={pct} tone={pct > 30 ? "warning" : "info"} />
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "var(--text-muted)" }}>
+                  <span>{pct}% of monthly burn</span>
+                  <span>{monthlyIncome > 0 ? `${Math.round((amt / monthlyIncome) * 100)}% of income` : ""}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+          <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+            Category allocations calibrated with your financial twin profile and transactions.
+          </span>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <Link to="/budget">
+              <Button variant="secondary" size="sm" style={{ fontSize: "12px" }}>
+                <SlidersHorizontal size={14} /> Adjust Budget
+              </Button>
+            </Link>
+            <Link to="/profile">
+              <Button variant="ghost" size="sm" style={{ fontSize: "12px" }}>
+                Edit In Profile →
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </Card>
+
       <QuickLinks links={[
         { to: '/budget', icon: SlidersHorizontal, label: 'Budget', detail: 'Category-level spending' },
         { to: '/transactions', icon: IndianRupee, label: 'Transactions', detail: 'Income & expense records' },

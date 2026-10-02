@@ -9,46 +9,13 @@ router = APIRouter(prefix="/debt", tags=["debt"])
 
 @router.get("")
 def get_debt(user_id: str = Depends(get_current_user_id)) -> dict:
-    # 1. Automatically process any due monthly payments for active debts with auto-deduct enabled
-    memory.process_monthly_debts(user_id)
-
     state = memory.state_copy(user_id)
     debts = state.get("debts", [])
     profile = state.get("profile", {})
 
-    # If profile has total_debt > 0 but debts is empty, seed a default debt item with rich tenure
-    if not debts and float(profile.get("total_debt", 0.0)) > 0:
-        tot = float(profile["total_debt"])
-        emi = float(profile.get("monthly_debt_payment") or round(tot * 0.03, 2))
-        total_tenure = 36
-        elapsed = 12
-        remaining = total_tenure - elapsed
-        orig_principal = round(tot * 1.35, 2)
-        start_dt = (date.today() - timedelta(days=elapsed * 30)).strftime("%Y-%m-01")
-        end_dt = (date.today() + timedelta(days=remaining * 30)).strftime("%Y-%m-01")
-
-        seeded = memory.add_debt(user_id, {
-            "name": "HDFC Auto / Vehicle Loan",
-            "loan_type": "Car / Vehicle Loan",
-            "lender": "HDFC Bank",
-            "principal": orig_principal,
-            "outstanding": tot,
-            "interest_rate": 9.5,
-            "emi": emi,
-            "total_tenure_months": total_tenure,
-            "tenure_elapsed_months": elapsed,
-            "remaining_months": remaining,
-            "start_date": start_dt,
-            "end_date": end_dt,
-            "emi_day": 5,
-            "auto_deduct": True,
-            "status": "active",
-        })
-        debts = [seeded]
-
     active_debts = [d for d in debts if d.get("status") != "paid_off"]
-    total = sum(float(item.get("outstanding", 0.0)) for item in active_debts)
-    emi = sum(float(item.get("emi", 0.0)) for item in active_debts)
+    total = sum(float(item.get("outstanding", 0.0)) for item in active_debts) if active_debts else float(profile.get("total_debt", 0.0))
+    emi = sum(float(item.get("emi", 0.0)) for item in active_debts) if active_debts else float(profile.get("monthly_debt_payment", 0.0))
     income = float(profile.get("monthly_income", 0.0))
 
     return {

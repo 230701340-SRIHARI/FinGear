@@ -16,8 +16,26 @@ def currency_compact(value: float) -> str:
     return f"₹{value:.0f}"
 
 
-def net_worth(profile: FinancialProfile) -> float:
-    return profile.savings_balance + profile.investments_balance + profile.emergency_fund - profile.total_debt
+def net_worth(profile: FinancialProfile | dict) -> float:
+    def _val(key: str) -> float:
+        if isinstance(profile, dict):
+            return float(profile.get(key, 0.0) or 0.0)
+        return float(getattr(profile, key, 0.0) or 0.0)
+
+    assets = (
+        _val("savings_balance")
+        + _val("emergency_fund")
+        + _val("investments_balance")
+        + _val("mutual_funds")
+        + _val("stocks")
+        + _val("fixed_deposits")
+        + _val("provident_fund")
+        + _val("gold")
+        + _val("real_estate_value")
+        + _val("crypto_value")
+    )
+    debt = _val("total_debt")
+    return round(assets - debt, 2)
 
 
 def debt_to_income(profile: FinancialProfile) -> float:
@@ -150,10 +168,25 @@ def generate_ai_brief(
     }
 
 
-def build_dashboard(profile: FinancialProfile, transactions: list[dict], budgets: list[dict]) -> dict:
+_DASHBOARD_CACHE: dict[str, tuple[int, dict]] = {}
+
+
+def build_dashboard(
+    profile: FinancialProfile,
+    transactions: list[dict],
+    budgets: list[dict],
+    user_id: str | None = None,
+) -> dict:
+    if user_id:
+        from app.repositories import memory
+        rev = memory.get_user_revision(user_id)
+        cached = _DASHBOARD_CACHE.get(user_id)
+        if cached and cached[0] == rev:
+            return cached[1]
+
     score = health_score(profile, transactions=transactions, budgets=budgets)
 
-    projected = forecast(profile, 24)["months"]
+    projected = forecast(profile, 24, user_id=user_id)["months"]
     goals = goal_plan(profile)
     monthly_expenses = total_expenses(profile)
     income = profile.monthly_income + profile.other_income
@@ -230,12 +263,12 @@ def build_dashboard(profile: FinancialProfile, transactions: list[dict], budgets
     runway_tone = "success" if runway_val >= 6.0 else ("info" if runway_val >= 3.0 else "warning")
     runway_detail = "Target reached (6+ mos)" if runway_val >= 6.0 else ("Target is 6 months" if runway_val >= 3.0 else "Below 3-mo benchmark")
 
-    return {
+    res = {
         "greeting": f"{salutation}, {first_name}",
         "status": "Your financial system is stable." if score["score"] >= 70 else "Your financial system needs attention.",
         "kpis": [
-            {"label": "Net worth", "value": currency_compact(net_worth(profile)), "detail": "+8.4% projected", "tone": "success"},
-            {"label": "Monthly cash flow", "value": currency_compact(cash_flow), "detail": "+12% vs last month", "tone": "info"},
+            {"label": "Net worth", "value": currency_compact(net_worth(profile)), "detail": "Assets minus liabilities", "tone": "success" if net_worth(profile) >= 0 else "warning"},
+            {"label": "Monthly cash flow", "value": currency_compact(cash_flow), "detail": "Surplus this month" if cash_flow >= 0 else "Deficit this month", "tone": "success" if cash_flow >= 0 else "warning"},
             {"label": "Savings rate", "value": f"{score['savings_rate']:.0%}", "detail": "Excellent" if score["savings_rate"] >= 0.25 else "Needs work", "tone": "success"},
             {"label": "Debt burden", "value": f"{debt_to_income(profile):.0%}", "detail": "Low risk" if debt_to_income(profile) < 0.2 else "Monitor", "tone": "success"},
             {"label": "Emergency runway", "value": f"{runway_val:.1f} months", "detail": runway_detail, "tone": runway_tone},
@@ -259,6 +292,9 @@ def build_dashboard(profile: FinancialProfile, transactions: list[dict], budgets
         "health": score,
         "goals": goals,
     }
+    if user_id:
+        _DASHBOARD_CACHE[user_id] = (rev, res)
+    return res
 
 
 def compute_portfolio_strategy(profile: FinancialProfile) -> dict:

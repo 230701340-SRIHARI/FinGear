@@ -72,6 +72,32 @@ def get_universe(category: str) -> str:
     return f"CATEGORY_{slug}"
 
 
+def format_universe_display_name(universe: str) -> str:
+    """Format category universe identifier into a clean user-facing title."""
+    if not universe:
+        return "Bills & Other"
+    if universe == "FOOD":
+        return "Food"
+    if universe == "SHOPPING":
+        return "Shopping & Entertainment"
+    if universe == "OTHERS":
+        return "Bills & Other"
+
+    name = universe
+    if name.startswith("CATEGORY_"):
+        name = name[len("CATEGORY_"):]
+
+    parts = [p for p in name.replace("-", "_").split("_") if p]
+    formatted = []
+    for p in parts:
+        u = p.upper()
+        if u in {"EMI", "OTT", "FD", "SIP", "PPF", "NPS", "EPF", "GST", "UPI"}:
+            formatted.append(u)
+        else:
+            formatted.append(u.capitalize())
+    return " ".join(formatted) or name
+
+
 # ─── Feature Extraction ─────────────────────────────────────────────────────
 
 def extract_features(transaction: dict) -> np.ndarray:
@@ -324,11 +350,18 @@ class AnomalyEnsembleManager:
         return self.brains[universe]
 
     def train_all(self, transactions: list[dict]):
-        """Full (re)training from a list of transactions."""
+        """Full (re)training from a list of transactions.
+
+        Transactions marked with model_training_excluded=True are skipped so that
+        user-discarded anomalies never corrupt the learned baseline.
+        """
         # Group transactions by universe dynamically
         grouped: dict[str, list[dict]] = {}
         for txn in transactions:
             if txn.get("type") != "expense":
+                continue
+            # Skip transactions the user has explicitly excluded from training
+            if txn.get("model_training_excluded"):
                 continue
             universe = get_universe(txn.get("category", "Other"))
             grouped.setdefault(universe, []).append(txn)
@@ -374,12 +407,13 @@ class AnomalyEnsembleManager:
 
         universe = get_universe(transaction.get("category", "Other"))
         brain = self._get_brain(universe)
+        disp_name = format_universe_display_name(universe)
 
         if brain.transaction_count < PHASE0_MIN_TRANSACTIONS:
             return AnomalyResult(
                 is_anomaly=False, score=0.0, phase=0,
                 kmeans_score=0.0, autoencoder_score=0.0,
-                reason=f"Insufficient data for {universe} ({brain.transaction_count}/{PHASE0_MIN_TRANSACTIONS} transactions)."
+                reason=f"Insufficient data for {disp_name} ({brain.transaction_count}/{PHASE0_MIN_TRANSACTIONS} transactions)."
             )
 
         amount = transaction.get("amount", 0.0)
@@ -394,7 +428,7 @@ class AnomalyEnsembleManager:
                 phase=0,
                 kmeans_score=0.0,
                 autoencoder_score=0.0,
-                reason=f"Baseline check: Amount {'exceeds' if is_anomaly else 'within'} {MEDIAN_MULTIPLIER}× median ({brain.median_amount:.0f}) for {universe}."
+                reason=f"Baseline check: Amount {'exceeds' if is_anomaly else 'within'} {MEDIAN_MULTIPLIER}× median ({brain.median_amount:.0f}) for {disp_name}."
             )
 
         # Phase 1: Ensemble
@@ -410,7 +444,7 @@ class AnomalyEnsembleManager:
             phase=1,
             kmeans_score=round(s_kmeans, 4),
             autoencoder_score=round(s_autoencoder, 4),
-            reason=f"Phase 1 ensemble: score {score_final:.3f} ({'ANOMALY' if is_anomaly else 'normal'}) for {universe}."
+            reason=f"Phase 1 ensemble: score {score_final:.3f} ({'ANOMALY' if is_anomaly else 'normal'}) for {disp_name}."
         )
 
     def train_on_feedback(self, transaction: dict):
@@ -426,6 +460,7 @@ class AnomalyEnsembleManager:
         for name, brain in self.brains.items():
             status[name] = {
                 "universe": name,
+                "display_name": format_universe_display_name(name),
                 "phase": brain.phase,
                 "transaction_count": brain.transaction_count,
                 "unique_days": brain.unique_days,

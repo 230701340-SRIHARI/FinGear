@@ -10,7 +10,7 @@ class Goal(BaseModel):
     name: str = Field(min_length=2)
     target_amount: float = Field(gt=0)
     current_amount: float = Field(ge=0)
-    target_months: int = Field(gt=0)
+    target_months: int = Field(default=1, ge=0)
     goal_type: str = "Custom"
     target_date: str | None = None
     monthly_contribution: float = Field(default=0, ge=0)
@@ -152,9 +152,26 @@ class InvestmentItem(BaseModel):
 
 
 class DebtItem(BaseModel):
+    id: str | None = None
     name: str
+    loan_type: str = "Personal Loan"
+    lender: str | None = None
+    account_number: str | None = None
     principal: float = Field(ge=0)
     outstanding: float = Field(ge=0)
     interest_rate: float = Field(ge=0)
+    interest_type: str = "Floating"
     emi: float = Field(ge=0)
+    total_tenure_months: int = 12
+    tenure_elapsed_months: int = 0
     remaining_months: int = Field(ge=0)
+    start_date: str | None = None
+    end_date: str | None = None
+    emi_day: int = 5
+    is_secured: bool = False
+    collateral: str | None = None
+    prepayment_penalty_pct: float = 0.0
+    linked_account: str | None = None
+    notes: str | None = None
+    auto_deduct: bool = True
+    status: str = "active"

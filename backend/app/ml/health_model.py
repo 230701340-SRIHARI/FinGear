@@ -12,6 +12,9 @@ from app.schemas.finance import FinancialProfile
 from app.services.financial_health import compute_financial_health_score
 
 
+_HEALTH_SCORE_CACHE: dict[str, tuple[int, dict]] = {}
+
+
 class ExplainableHealthModel:
     """
     Canonical Explainable Financial Health Scoring Engine.
@@ -28,8 +31,23 @@ class ExplainableHealthModel:
         self,
         profile: FinancialProfile,
         transactions: list[dict] | None = None,
-        budgets: list[dict] | None = None
+        budgets: list[dict] | None = None,
+        user_id: str | None = None,
     ) -> dict:
+        if user_id:
+            from app.repositories import memory
+            rev = memory.get_user_revision(user_id)
+            cached = _HEALTH_SCORE_CACHE.get(user_id)
+            if cached and cached[0] == rev:
+                return cached[1]
+
+            result = compute_financial_health_score(profile, transactions=transactions, budgets=budgets)
+            result["model_mode"] = self.mode
+            result["model_name"] = self.model_name
+            result["is_ml_active"] = False
+            _HEALTH_SCORE_CACHE[user_id] = (rev, result)
+            return result
+
         result = compute_financial_health_score(profile, transactions=transactions, budgets=budgets)
         result["model_mode"] = self.mode
         result["model_name"] = self.model_name

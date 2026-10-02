@@ -20,9 +20,12 @@ from __future__ import annotations
 import math
 import os
 import pickle
+import warnings
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Optional, Any
+
+warnings.filterwarnings("ignore", message=".*Trying to unpickle estimator.*")
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
@@ -87,6 +90,26 @@ def _extract_daily_expenses(transactions: list[dict]) -> pd.Series:
     s = pd.Series(daily_totals).sort_index()
     s.index = pd.to_datetime(s.index)
     return s
+
+
+_CACHED_ARIMA_FIT = None
+_ARIMA_LOADED = False
+
+
+def _get_arima_fit():
+    global _CACHED_ARIMA_FIT, _ARIMA_LOADED
+    if not _ARIMA_LOADED:
+        models_dir = os.path.join(os.path.dirname(__file__), "models")
+        arima_path = os.path.join(models_dir, "arima_forecast_model.pkl")
+        if os.path.exists(arima_path):
+            try:
+                with open(arima_path, "rb") as f:
+                    arima_data = pickle.load(f)
+                    _CACHED_ARIMA_FIT = arima_data.get("model_fit")
+            except Exception:
+                _CACHED_ARIMA_FIT = None
+        _ARIMA_LOADED = True
+    return _CACHED_ARIMA_FIT
 
 
 class StatisticalRuleForecaster:
@@ -386,17 +409,8 @@ class UserForecastingEngine:
         daily_s = _extract_daily_expenses(transactions or [])
         distinct_days = len(daily_s)
 
-        # Try loading ARIMA model
-        arima_fit = None
-        models_dir = os.path.join(os.path.dirname(__file__), "models")
-        arima_path = os.path.join(models_dir, "arima_forecast_model.pkl")
-        if os.path.exists(arima_path):
-            try:
-                with open(arima_path, "rb") as f:
-                    arima_data = pickle.load(f)
-                    arima_fit = arima_data.get("model_fit")
-            except Exception as e:
-                arima_fit = None
+        # Load ARIMA model (cached in memory)
+        arima_fit = _get_arima_fit()
 
         # Determine monthly allocation based on adaptive tier ratios
         adaptive_savings_pct = (profile.adaptive_savings_ratio or tier_info.get("savings_pct", 20.0)) / 100.0
@@ -407,8 +421,19 @@ class UserForecastingEngine:
         investment_share = 1.0 - savings_share
 
         rows = []
-        savings = profile.savings_balance
-        investments = profile.investments_balance
+        savings = float(profile.savings_balance or 0.0) + float(profile.emergency_fund or 0.0)
+        investments = (
+            float(profile.investments_balance or 0.0)
+            + float(profile.mutual_funds or 0.0)
+            + float(profile.stocks or 0.0)
+            + float(profile.fixed_deposits or 0.0)
+            + float(profile.provident_fund or 0.0)
+            + float(profile.gold or 0.0)
+            + float(profile.real_estate_value or 0.0)
+            + float(profile.crypto_value or 0.0)
+        )
+        current_debt = float(profile.total_debt or 0.0)
+        monthly_debt_payment = float(profile.monthly_debt_payment or 0.0)
         monthly_growth = 0.0068  # approx 8.5% p.a. diversified compounding
 
         current_date = date.today()
@@ -437,7 +462,12 @@ class UserForecastingEngine:
 
             savings += surplus * savings_share
             investments = investments * (1 + monthly_growth) + (surplus * investment_share) + arima_delta
-            net_worth = savings + investments - profile.total_debt
+
+            if current_debt > 0 and monthly_debt_payment > 0:
+                principal_portion = min(current_debt, monthly_debt_payment * 0.70)
+                current_debt = max(0.0, current_debt - principal_portion)
+
+            net_worth = savings + investments - current_debt
 
             rows.append({
                 "month": month_label,
@@ -484,7 +514,10 @@ class UserForecastingEngine:
         )
 
 
-# Backward-compatibility alias for legacy imports
+_HORIZON_CACHE: dict[tuple[str, int], tuple[int, ForecastResult]] = {}
+
+
+# Backward-compatibility alias for legacy imports with high-performance memoization
 class ForecastEngine:
     """Wrapper ensuring existing imports of ForecastEngine remain fully functional."""
 
@@ -496,5 +529,17 @@ class ForecastEngine:
         profile: FinancialProfile,
         months: int = 24,
         transactions: Optional[list[dict]] = None,
+        user_id: Optional[str] = None,
     ) -> ForecastResult:
+        if user_id:
+            from app.repositories import memory
+            rev = memory.get_user_revision(user_id)
+            cached = _HORIZON_CACHE.get((user_id, months))
+            if cached and cached[0] == rev:
+                return cached[1]
+
+            res = self.engine.forecast_horizon(profile, months=months, transactions=transactions)
+            _HORIZON_CACHE[(user_id, months)] = (rev, res)
+            return res
+
         return self.engine.forecast_horizon(profile, months=months, transactions=transactions)

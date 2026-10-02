@@ -1,7 +1,10 @@
 import os
 import pickle
+import warnings
 import pandas as pd
 from app.schemas.finance import FinancialProfile
+
+warnings.filterwarnings("ignore", message=".*Trying to unpickle estimator.*")
 
 class AdvancedModels:
     def __init__(self):

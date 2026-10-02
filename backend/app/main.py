@@ -1,11 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app.api import ai, auth, budget, copilot, dashboard, debt, forecast, goals, health, insights, investments, profile, reports, routes, settings as settings_api, simulator, timeline, transactions
 from app.core.config import settings
 
 app = FastAPI(title=settings.app_name)
 
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_origin, "http://localhost:5173", "http://127.0.0.1:5173"],

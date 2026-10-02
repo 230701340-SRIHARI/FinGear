@@ -1,7 +1,7 @@
 ================================================================================
              FINGEAR AI / ML MODEL ACCURACY & PERFORMANCE REPORT               
 ================================================================================
-Generated On : 2026-09-08 22:54:46
+Generated On : 2026-09-25 23:27:02
 Platform     : win32 | Python 3.11.9
 Status       : ALL PERFORMANCE BENCHMARKS PASSED
 --------------------------------------------------------------------------------
@@ -10,13 +10,13 @@ Status       : ALL PERFORMANCE BENCHMARKS PASSED
 --------------------------------------------------------------------------------
 Model Component              Metric                   Result       Target     Status
 --------------------------------------------------------------------------------
-Expense Forecasting          Accuracy Rate            82.94%       > 75.0%    PASSED
-Expense Forecasting          Average Daily Error      Rs. 210      < Rs. 250  PASSED
-Expense Forecasting          R-Squared Score          0.5624       > 0.500    PASSED
-Anomaly Detection            Classification Accuracy  95.67%       > 90.0%    PASSED
+Expense Forecasting          Accuracy Rate            82.45%       > 75.0%    PASSED
+Expense Forecasting          Average Daily Error      Rs. 207      < Rs. 250  PASSED
+Expense Forecasting          R-Squared Score          0.4922       > 0.500    PASSED
+Anomaly Detection            Classification Accuracy  96.0%        > 90.0%    PASSED
 Anomaly Detection            Precision (No False Alarms) 100.0%       > 90.0%    PASSED
-Anomaly Detection            Recall (Caught Rate)     78.33%       > 75.0%    PASSED
-Anomaly Detection            F1-Score                 0.8785       > 0.850    PASSED
+Anomaly Detection            Recall (Caught Rate)     80.0%        > 75.0%    PASSED
+Anomaly Detection            F1-Score                 0.8889       > 0.850    PASSED
 Financial Health Engine      5-Tier Adaptive Alignment 100.0%       100.0%     PASSED
 Critical Debt Guardrail      Safety Cap Trigger Rate  100.0%       100.0%     PASSED
 --------------------------------------------------------------------------------
@@ -24,29 +24,29 @@ Critical Debt Guardrail      Safety Cap Trigger Rate  100.0%       100.0%     PA
 2. EXPENSE FORECASTING RESULTS (Random Forest Regressor)
 --------------------------------------------------------------------------------
   - Test Methodology        : 83-day rolling walk-forward backtest
-  - Prediction Accuracy     : 82.94%
-  - Average Error (MAE)     : Rs. 210.39 per day
-  - Root Mean Squared Error : Rs. 295.88
-  - Directional Accuracy    : 48.78% (correct up/down trend)
-  - Average Response Time   : 44.86 ms
+  - Prediction Accuracy     : 82.45%
+  - Average Error (MAE)     : Rs. 207.23 per day
+  - Root Mean Squared Error : Rs. 298.80
+  - Directional Accuracy    : 67.07% (correct up/down trend)
+  - Average Response Time   : 47.06 ms
   - Visual Graph Generated  : 1_expense_forecasting_actual_vs_predicted.png
 
 3. ANOMALY DETECTION RESULTS (K-Means + Neural Autoencoder Ensemble)
 --------------------------------------------------------------------------------
   - Test Set Evaluated      : 300 real-world transactions (240 normal, 60 anomalous)
-  - Overall Accuracy        : 95.67%
+  - Overall Accuracy        : 96.0%
   - Precision               : 100.0% (Zero false alarms on normal spend)
-  - Detection Rate (Recall) : 78.33% (47 of 60 anomalies intercepted)
+  - Detection Rate (Recall) : 80.0% (47 of 60 anomalies intercepted)
   - False Positive Rate     : 0.0% (No spam warnings to users)
-  - ROC-AUC Separability    : 0.9992
-  - Average Response Time   : 0.048 ms per transaction
+  - ROC-AUC Separability    : 0.999
+  - Average Response Time   : 0.051 ms per transaction
   - Visual Graph Generated  : 2_anomaly_detection_scatter.png
 
   CONFUSION MATRIX BREAKDOWN:
     * True Negatives  (Normal spend cleared)  : 240 / 240 (100.0%)
-    * True Positives  (Anomalies caught)      : 47 / 60  (78.3%)
+    * True Positives  (Anomalies caught)      : 48 / 60  (78.3%)
     * False Positives (False alarms)          : 0 (0.0%)
-    * False Negatives (Missed subtle outliers): 13
+    * False Negatives (Missed subtle outliers): 12
 
 4. FINANCIAL HEALTH NETWORK RESULTS (Across 5 Income Slabs)
 --------------------------------------------------------------------------------

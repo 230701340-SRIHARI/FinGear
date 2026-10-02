@@ -30,6 +30,16 @@ class _UserAIState:
         self.anomaly_manager = AnomalyEnsembleManager()
         self.loaded = False
         self.anomaly_flags: dict[str, AnomalyResult] = {}  # txn_id -> result
+        self.last_txns_signature = None
+        self.cached_anomalies: list[dict] | None = None
+        self.last_forecast_signature = None
+        self.cached_forecast: dict | None = None
+
+    def invalidate_cache(self):
+        self.last_txns_signature = None
+        self.cached_anomalies = None
+        self.last_forecast_signature = None
+        self.cached_forecast = None
 
     def load_weights(self):
         """Load persisted weights from disk if available."""
@@ -39,16 +49,15 @@ class _UserAIState:
         if result:
             forecast_weights, multiverse_weights = result
             self.forecast_brain.weights = forecast_weights
-            for name in UNIVERSE_NAMES:
-                if name in multiverse_weights:
-                    self.anomaly_manager.set_autoencoder_weights(name, multiverse_weights[name])
+            for name, w in multiverse_weights.items():
+                self.anomaly_manager.set_autoencoder_weights(name, w)
         self.loaded = True
 
     def save_weights(self):
         """Persist current weights to disk."""
         multiverse = {
             name: self.anomaly_manager.get_autoencoder_weights(name)
-            for name in UNIVERSE_NAMES
+            for name in self.anomaly_manager.brains.keys()
         }
         weight_store.save_weights(self.user_id, self.forecast_brain.weights, multiverse)
 
@@ -77,19 +86,34 @@ class AIEngine:
         Process a new transaction: train anomaly models, check for anomaly, update forecast.
 
         Called when a new transaction is created.
+
+        Critical: we train on HISTORICAL transactions only (excluding the new one) so the
+        model's baseline (median, cluster centroids, autoencoder weights) is not contaminated
+        by the very transaction we are trying to evaluate. After detection:
+        - If NOT an anomaly: incorporate it via an online train step.
+        - If IS an anomaly: leave it out until the user explicitly acknowledges it.
         """
         state = self._get_user(user_id)
+        state.invalidate_cache()
 
-        # Retrain anomaly ensemble with full transaction history
-        state.anomaly_manager.train_all(all_transactions)
+        txn_id = transaction.get("id", "")
 
-        # Detect anomaly for the new transaction
+        # Build historical baseline — exclude the new transaction itself
+        historical = [t for t in all_transactions if str(t.get("id", "")) != str(txn_id)]
+
+        # Retrain anomaly ensemble on historical data only
+        state.anomaly_manager.train_all(historical)
+
+        # Detect anomaly for the new transaction against the clean baseline
         result = state.anomaly_manager.detect(transaction)
 
-        # Store anomaly flag if detected
-        txn_id = transaction.get("id", "")
         if txn_id and result.is_anomaly:
+            # Store anomaly flag; do NOT train on this transaction yet
             state.anomaly_flags[txn_id] = result
+        else:
+            # Not an anomaly — safe to do an online update to incorporate this pattern
+            if transaction.get("type") == "expense":
+                state.anomaly_manager.train_on_feedback(transaction)
 
         # Save weights after training
         state.save_weights()
@@ -104,8 +128,12 @@ class AIEngine:
         monthly_income: float = 0.0,
         monthly_pot_contributions: float = 0.0,
     ) -> dict:
-        """Get expense forecast for a user."""
+        """Get expense forecast for a user with smart in-memory caching."""
         state = self._get_user(user_id)
+        sig = (len(transactions), current_balance, monthly_income, monthly_pot_contributions)
+        if state.cached_forecast is not None and state.last_forecast_signature == sig:
+            return state.cached_forecast
+
         result = state.forecast_brain.get_forecast(
             transactions=transactions,
             current_balance=current_balance,
@@ -113,10 +141,7 @@ class AIEngine:
             monthly_pot_contributions=monthly_pot_contributions,
         )
 
-        # Save weights after potential training
-        state.save_weights()
-
-        return {
+        res_dict = {
             "predicted_tomorrow": result.predicted_tomorrow,
             "projected_monthly_total": result.projected_monthly_total,
             "projected_savings": result.projected_savings,
@@ -126,13 +151,19 @@ class AIEngine:
             "status_message": result.status_message,
             "days_until_ready": result.days_until_ready,
         }
+        state.cached_forecast = res_dict
+        state.last_forecast_signature = sig
+        return res_dict
 
     def get_anomalies(self, user_id: str, transactions: list[dict]) -> list[dict]:
         """
         Get all anomalous transactions for a user.
-        Re-runs detection on all transactions.
+        Uses in-memory caching if transaction list has not changed.
         """
         state = self._get_user(user_id)
+        txns_sig = (len(transactions), tuple(t.get("id") for t in transactions[:20]))
+        if state.cached_anomalies is not None and state.last_txns_signature == txns_sig:
+            return state.cached_anomalies
 
         # Re-train on current data
         state.anomaly_manager.train_all(transactions)
@@ -156,6 +187,8 @@ class AIEngine:
                     },
                 })
 
+        state.cached_anomalies = anomalies
+        state.last_txns_signature = txns_sig
         return anomalies
 
     def acknowledge_anomaly(self, user_id: str, transaction: dict) -> dict:
@@ -164,6 +197,7 @@ class AIEngine:
         Triggers autoencoder retraining to incorporate this pattern.
         """
         state = self._get_user(user_id)
+        state.invalidate_cache()
 
         # Retrain autoencoder on this acknowledged transaction
         state.anomaly_manager.train_on_feedback(transaction)
@@ -211,7 +245,7 @@ class AIEngine:
             "forecast_weights": state.forecast_brain.weights.to_list(),
             "multiverse_weights": {
                 name: state.anomaly_manager.get_autoencoder_weights(name).to_list()
-                for name in UNIVERSE_NAMES
+                for name in state.anomaly_manager.brains.keys()
             },
         }
 

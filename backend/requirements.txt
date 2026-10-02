@@ -7,3 +7,4 @@ openai>=1.99.0
 sqlalchemy>=2.0.20
 psycopg2-binary>=2.9.9
 python-multipart>=0.0.9
+orjson>=3.10.0

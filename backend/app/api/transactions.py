@@ -16,7 +16,6 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 @router.get("")
 def list_transactions(user_id: str = Depends(get_current_user_id)) -> dict:
-    memory.process_recurring_transactions(user_id)
     transactions = memory.state_copy(user_id)["transactions"]
     return {"transactions": transactions, "summary": transaction_summary(transactions)}
 

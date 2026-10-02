@@ -1,38 +1,38 @@
 {
-  "timestamp": "2026-09-08T22:54:46.464352",
+  "timestamp": "2026-09-25T23:27:02.718380",
   "forecasting": {
     "samples_evaluated": 83,
-    "mae_inr": 210.39,
-    "rmse_inr": 295.88,
-    "mape_percent": 17.06,
-    "accuracy_percent": 82.94,
-    "r2_score": 0.5624,
-    "directional_accuracy_percent": 48.78,
-    "average_latency_ms": 44.86,
+    "mae_inr": 207.23,
+    "rmse_inr": 298.8,
+    "mape_percent": 17.55,
+    "accuracy_percent": 82.45,
+    "r2_score": 0.4922,
+    "directional_accuracy_percent": 67.07,
+    "average_latency_ms": 47.06,
     "feature_importances": {
-      "rolling_3d_mean": 0.0187,
-      "rolling_7d_mean": 0.0099,
-      "rolling_7d_std": 0.0233,
-      "day_of_week": 0.1371,
-      "day_of_month": 0.5422,
-      "is_weekend": 0.1931,
-      "days_since_salary": 0.0625,
-      "prev_day_spend": 0.0133
+      "rolling_3d_mean": 0.03,
+      "rolling_7d_mean": 0.0125,
+      "rolling_7d_std": 0.0197,
+      "day_of_week": 0.1361,
+      "day_of_month": 0.5556,
+      "is_weekend": 0.1506,
+      "days_since_salary": 0.0665,
+      "prev_day_spend": 0.029
     }
   },
   "anomaly_detection": {
     "samples_evaluated": 300,
-    "true_positives": 47,
+    "true_positives": 48,
     "false_positives": 0,
     "true_negatives": 240,
-    "false_negatives": 13,
-    "accuracy_percent": 95.67,
+    "false_negatives": 12,
+    "accuracy_percent": 96.0,
     "precision_percent": 100.0,
-    "recall_percent": 78.33,
-    "f1_score": 0.8785,
-    "roc_auc_score": 0.9992,
+    "recall_percent": 80.0,
+    "f1_score": 0.8889,
+    "roc_auc_score": 0.999,
     "false_positive_rate_percent": 0.0,
-    "average_latency_ms": 0.048
+    "average_latency_ms": 0.051
   },
   "health_framework": {
     "tier_evaluations": [
@@ -88,7 +88,7 @@
       }
     ],
     "resilience_cap_effective": true,
-    "average_latency_ms": 0.059
+    "average_latency_ms": 0.062
   },
   "advanced_regressors": {
     "mean_predicted_return_percent": 7.86,

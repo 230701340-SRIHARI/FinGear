@@ -214,8 +214,7 @@ def _extract_recent_metrics(profile: FinancialProfile, transactions: list[dict] 
         needs_sum += profile_emi
         # Voluntary savings: any remaining surplus or explicitly logged investments
         voluntary_savings = max(0.0, profile_income - needs_sum - wants_sum)
-        if savings_sum == 0.0:
-            savings_sum = voluntary_savings
+        savings_sum = max(savings_sum, voluntary_savings)
 
         return {
             "I": max(profile_income, 1.0),
@@ -238,6 +237,8 @@ def _extract_recent_metrics(profile: FinancialProfile, transactions: list[dict] 
     cutoff_date = today - timedelta(days=90)
 
     income_total = 0.0
+    salary_income_total = 0.0
+    supplemental_income_total = 0.0
     needs_total = 0.0
     wants_total = 0.0
     savings_total = 0.0
@@ -263,6 +264,12 @@ def _extract_recent_metrics(profile: FinancialProfile, transactions: list[dict] 
 
         if bucket == "Income":
             income_total += amt
+            cat_lower = cat.lower()
+            desc_lower = str(t.get("description") or "").lower()
+            if any(w in cat_lower or w in desc_lower for w in ["salary", "payroll", "stipend"]):
+                salary_income_total += amt
+            else:
+                supplemental_income_total += amt
         elif bucket == "Needs":
             needs_total += amt
             category_totals[cat] += amt
@@ -302,13 +309,28 @@ def _extract_recent_metrics(profile: FinancialProfile, transactions: list[dict] 
         avg_wants = wants_total / active_months_divisor
         avg_savings = (savings_total / active_months_divisor)
 
-    # Calculate monthly income
-    avg_income = (income_total / active_months_divisor) if income_total > 0 else profile_income
+    # Calculate monthly income:
+    # 1. Base salary: from tracked primary salary transactions or inherited from profile
+    if salary_income_total > 0:
+        tracked_salary_monthly = salary_income_total / active_months_divisor
+        # If tracking history is short (< 30 days) and tracked salary is lower than declared profile salary, blend
+        if days_count < 30 and profile_income > tracked_salary_monthly:
+            base_monthly_salary = profile_income
+        else:
+            base_monthly_salary = tracked_salary_monthly
+    else:
+        base_monthly_salary = profile_income
+
+    # 2. Supplemental inflows (incentives, bonuses, freelance, dividends) augment base salary
+    avg_supplemental = supplemental_income_total / active_months_divisor
+    avg_income = base_monthly_salary + avg_supplemental
+
+    if avg_income <= 0.0:
+        avg_income = profile_income if profile_income > 0 else 1.0
 
     # If voluntary surplus wasn't booked as transaction transfers, calculate surplus
     surplus = max(0.0, avg_income - avg_needs - avg_wants)
-    if avg_savings == 0.0 and surplus > 0:
-        avg_savings = surplus
+    avg_savings = max(avg_savings, surplus)
 
     return {
         "I": max(avg_income, 1.0),

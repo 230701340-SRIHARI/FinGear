@@ -13,4 +13,19 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    target: "es2020",
+    minify: "esbuild",
+    cssMinify: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-charts": ["recharts"],
+          "vendor-icons": ["lucide-react"],
+          "vendor-react": ["react", "react-dom", "react-router-dom"],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 600,
+  },
 });

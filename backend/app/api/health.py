@@ -11,8 +11,8 @@ health_engine = ExplainableHealthModel()
 
 @router.get("")
 def get_health(user_id: str = Depends(get_current_user_id)) -> dict:
-    state = memory.state_copy(user_id)
+    state = memory.get_state(user_id)
     profile = FinancialProfile(**state["profile"])
     transactions = state.get("transactions", [])
     budgets = state.get("budgets", [])
-    return health_engine.score(profile, transactions=transactions, budgets=budgets)
+    return health_engine.score(profile, transactions=transactions, budgets=budgets, user_id=user_id)

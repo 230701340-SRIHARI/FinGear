@@ -64,9 +64,9 @@ export function Simulator() {
   const expenses = expList.reduce((sum, item) => sum + (Number(item?.amount) || 0), 0);
   const cashFlow = (Number(profile?.monthly_income) || 0) - expenses - (Number(profile?.monthly_debt_payment) || 0);
   const chart = result ? [
-    { label: "Health", current: result.base_score, simulated: result.simulated_score },
-    { label: "Cash flow", current: Math.round(result.base_cash_flow / 1000), simulated: Math.round(result.simulated_cash_flow / 1000) },
-    { label: "Net worth", current: Math.round(result.baseline_net_worth / 10000), simulated: Math.round(result.projected_net_worth / 10000) },
+    { label: "Health Score", current: result.base_score, simulated: result.simulated_score, type: "score", rawCurrent: result.base_score, rawSimulated: result.simulated_score },
+    { label: "Cash Flow", current: Math.round(result.base_cash_flow), simulated: Math.round(result.simulated_cash_flow), type: "currency", rawCurrent: result.base_cash_flow, rawSimulated: result.simulated_cash_flow },
+    { label: "Net Worth", current: Math.round(result.baseline_net_worth), simulated: Math.round(result.projected_net_worth), type: "currency", rawCurrent: result.baseline_net_worth, rawSimulated: result.projected_net_worth },
   ] : [];
 
   const activeTargetName = targetGoalName || scenario.target_goal_name || goals?.analysis?.[0]?.name;
@@ -165,7 +165,7 @@ export function Simulator() {
           )}
 
           <section className="grid-2">
-            <Card><div className="section-title">Current vs simulated state</div><ScenarioBars data={chart} /></Card>
+            <Card><div className="section-title">Current vs simulated state</div><ScenarioBars data={chart} result={result} /></Card>
             <Card glow><div className="section-title">Decision recommendation</div><p className="recommendation">{result.recommendation}</p><div className="state-list">{result.goals?.map((goal) => <span key={goal.name}>{goal.name}: {goal.achievement_probability}% achievable</span>)}</div></Card>
           </section>
         </>

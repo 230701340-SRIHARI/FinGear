@@ -85,38 +85,7 @@ def _empty_state(name: str = "New User", email: str = "") -> dict:
             {"severity": "info", "title": "Welcome to FinGear AI Twin", "detail": "Log your income and expenses to build your personalized Financial Digital Twin."}
         ],
         "events": [],
-        "recurring_transactions": [
-            {
-                "id": str(uuid4()),
-                "name": "Apartment House Rent",
-                "amount": 16000.0,
-                "category": "Rent",
-                "type": "expense",
-                "day_of_month": 1,
-                "is_active": True,
-                "last_processed_date": None,
-            },
-            {
-                "id": str(uuid4()),
-                "name": "High-Speed WiFi Broadband",
-                "amount": 999.0,
-                "category": "Utilities",
-                "type": "expense",
-                "day_of_month": 5,
-                "is_active": True,
-                "last_processed_date": None,
-            },
-            {
-                "id": str(uuid4()),
-                "name": "Nifty 50 Index Fund SIP",
-                "amount": 5000.0,
-                "category": "Mutual Funds",
-                "type": "savings",
-                "day_of_month": 1,
-                "is_active": True,
-                "last_processed_date": None,
-            },
-        ],
+        "recurring_transactions": [],
     }
 
 
@@ -240,13 +209,17 @@ def _load_user_state_from_db(user_id: str, db=None) -> dict | None:
         )
         active_txns = []
         for t in db_txns:
+            raw_desc = t.description or ""
+            is_rec = "(Auto-Recurring)" in raw_desc or getattr(t, "is_recurring", False)
+            clean_desc = raw_desc.replace(" (Auto-Recurring)", "").replace("(Auto-Recurring)", "").strip()
             active_txns.append({
                 "id": t.id,
                 "date": str(t.transaction_date),
-                "description": t.description,
+                "description": clean_desc,
                 "category": t.category,
                 "type": t.type,
                 "amount": float(t.amount),
+                "is_recurring": bool(is_rec),
                 "anomaly_flag": bool(t.anomaly_flag),
                 "anomaly_score": float(t.anomaly_score or 0.0),
                 "acknowledged": bool(t.anomaly_acknowledged),
@@ -265,7 +238,7 @@ def _load_user_state_from_db(user_id: str, db=None) -> dict | None:
             deleted_txns.append({
                 "id": t.id,
                 "date": str(t.transaction_date),
-                "description": t.description,
+                "description": (t.description or "").replace(" (Auto-Recurring)", "").replace("(Auto-Recurring)", "").strip(),
                 "category": t.category,
                 "type": t.type,
                 "amount": float(t.amount),
@@ -280,26 +253,7 @@ def _load_user_state_from_db(user_id: str, db=None) -> dict | None:
             .all()
         )
         if not db_recurring:
-            defaults = [
-                {"name": "Apartment House Rent", "amount": 16000.0, "category": "Rent", "type": "expense", "day_of_month": 1},
-                {"name": "High-Speed WiFi Broadband", "amount": 999.0, "category": "Utilities", "type": "expense", "day_of_month": 5},
-                {"name": "Nifty 50 Index Fund SIP", "amount": 5000.0, "category": "Mutual Funds", "type": "savings", "day_of_month": 1},
-            ]
             db_recurring = []
-            for d in defaults:
-                r_row = RecurringTransaction(
-                    id=str(uuid4()),
-                    user_id=user_id,
-                    name=d["name"],
-                    amount=d["amount"],
-                    category=d["category"],
-                    type=d["type"],
-                    day_of_month=d["day_of_month"],
-                    is_active=True,
-                )
-                db.add(r_row)
-                db_recurring.append(r_row)
-            db.commit()
 
         recurring_list = [
             {
@@ -311,6 +265,7 @@ def _load_user_state_from_db(user_id: str, db=None) -> dict | None:
                 "day_of_month": int(r.day_of_month or 1),
                 "is_active": bool(r.is_active),
                 "last_processed_date": r.last_processed_date,
+                "debt_id": getattr(r, "debt_id", None),
             }
             for r in db_recurring
         ]
@@ -359,43 +314,31 @@ def _load_user_state_from_db(user_id: str, db=None) -> dict | None:
             {
                 "id": str(d.id),
                 "name": d.name,
+                "loan_type": getattr(d, "loan_type", None) or "Personal Loan",
+                "lender": getattr(d, "lender", None) or "",
+                "account_number": getattr(d, "account_number", None) or "",
                 "principal": float(d.principal),
                 "outstanding": float(d.outstanding),
                 "interest_rate": float(d.interest_rate),
+                "interest_type": getattr(d, "interest_type", None) or "Floating",
                 "emi": float(d.emi),
+                "total_tenure_months": int(getattr(d, "total_tenure_months", None) or 12),
+                "tenure_elapsed_months": int(getattr(d, "tenure_elapsed_months", None) or 0),
                 "remaining_months": int(d.remaining_months),
+                "start_date": getattr(d, "start_date", None) or "",
+                "end_date": getattr(d, "end_date", None) or "",
+                "emi_day": int(getattr(d, "emi_day", None) or 5),
+                "is_secured": bool(getattr(d, "is_secured", False)),
+                "collateral": getattr(d, "collateral", None) or "",
+                "prepayment_penalty_pct": float(getattr(d, "prepayment_penalty_pct", None) or 0.0),
+                "linked_account": getattr(d, "linked_account", None) or "",
+                "notes": getattr(d, "notes", None) or "",
+                "last_payment_date": getattr(d, "last_payment_date", None),
+                "auto_deduct": bool(getattr(d, "auto_deduct", True)),
+                "status": getattr(d, "status", None) or "active",
             }
             for d in db_debts
         ]
-        if not debts_list and float(profile_dict.get("total_debt", 0.0)) > 0:
-            tot = float(profile_dict["total_debt"])
-            emi = float(profile_dict.get("monthly_debt_payment") or round(tot * 0.03, 2))
-            default_debt = {
-                "id": str(uuid4()),
-                "name": "Personal / Vehicle Loan",
-                "principal": tot,
-                "outstanding": tot,
-                "interest_rate": 10.5,
-                "emi": emi,
-                "remaining_months": max(12, int(tot / max(1.0, emi))),
-            }
-            try:
-                db_d = Debt(
-                    id=default_debt["id"],
-                    user_id=user_id,
-                    name=default_debt["name"],
-                    principal=default_debt["principal"],
-                    outstanding=default_debt["outstanding"],
-                    interest_rate=default_debt["interest_rate"],
-                    emi=default_debt["emi"],
-                    remaining_months=default_debt["remaining_months"],
-                )
-                db.add(db_d)
-                db.commit()
-                debts_list.append(default_debt)
-            except Exception:
-                db.rollback()
-                debts_list.append(default_debt)
 
         user_entry = {
             "id": db_user.id,
@@ -490,25 +433,6 @@ def create_user(name: str, email: str, password: str) -> dict:
                 )
                 db.add(db_profile)
 
-                # Seed initial recurring commitments
-                defaults = [
-                    {"name": "Apartment House Rent", "amount": 16000.0, "category": "Rent", "type": "expense", "day_of_month": 1},
-                    {"name": "High-Speed WiFi Broadband", "amount": 999.0, "category": "Utilities", "type": "expense", "day_of_month": 5},
-                    {"name": "Nifty 50 Index Fund SIP", "amount": 5000.0, "category": "Mutual Funds", "type": "savings", "day_of_month": 1},
-                ]
-                for d in defaults:
-                    r_txn = RecurringTransaction(
-                        id=str(uuid4()),
-                        user_id=user_id,
-                        name=d["name"],
-                        amount=d["amount"],
-                        category=d["category"],
-                        type=d["type"],
-                        day_of_month=d["day_of_month"],
-                        is_active=True,
-                    )
-                    db.add(r_txn)
-
                 db.commit()
 
             user_dict = _load_user_state_from_db(user_id, db=db)
@@ -558,12 +482,25 @@ def get_user(user_id: str) -> dict:
     raise KeyError(user_id)
 
 
+_user_revisions: dict[str, int] = {}
+
+
+def get_user_revision(user_id: str) -> int:
+    return _user_revisions.get(user_id, 0)
+
+
+def bump_user_revision(user_id: str) -> int:
+    rev = _user_revisions.get(user_id, 0) + 1
+    _user_revisions[user_id] = rev
+    return rev
+
+
 def get_state(user_id: str) -> dict:
     return get_user(user_id)["state"]
 
 
 def state_copy(user_id: str) -> dict:
-    return deepcopy(get_state(user_id))
+    return get_state(user_id)
 
 
 def update_profile(user_id: str, profile: dict) -> dict:
@@ -620,7 +557,8 @@ def update_profile(user_id: str, profile: dict) -> dict:
             print(f"[DB update_profile] Error: {e}")
 
     state["profile"] = profile
-    return deepcopy(profile)
+    bump_user_revision(user_id)
+    return profile
 
 
 def _apply_asset_impact(profile: dict, transaction: dict, reverse: bool = False):
@@ -733,7 +671,8 @@ def add_transaction(user_id: str, transaction: dict) -> dict:
     _apply_asset_impact(state["profile"], transaction, reverse=False)
     # Sync with postgres
     _sync_to_postgres(user_id, txn=transaction, profile=state["profile"])
-    return deepcopy(transaction)
+    bump_user_revision(user_id)
+    return transaction
 
 
 def add_goal(user_id: str, goal: dict) -> dict:
@@ -765,7 +704,8 @@ def add_goal(user_id: str, goal: dict) -> dict:
         except Exception as e:
             print(f"[DB add_goal] Error: {e}")
 
-    return deepcopy(new_goal)
+    bump_user_revision(user_id)
+    return new_goal
 
 
 def update_goal(user_id: str, goal_name: str, goal: dict) -> dict:
@@ -799,7 +739,8 @@ def update_goal(user_id: str, goal_name: str, goal: dict) -> dict:
         except Exception as e:
             print(f"[DB update_goal] Error: {e}")
 
-    return deepcopy(goal)
+    bump_user_revision(user_id)
+    return goal
 
 
 def delete_goal(user_id: str, goal_name: str) -> None:
@@ -814,6 +755,8 @@ def delete_goal(user_id: str, goal_name: str) -> None:
             db.close()
         except Exception as e:
             print(f"[DB delete_goal] Error: {e}")
+
+    bump_user_revision(user_id)
 
 
 def delete_transaction(user_id: str, transaction_id: str) -> None:
@@ -830,6 +773,8 @@ def delete_transaction(user_id: str, transaction_id: str) -> None:
             _apply_asset_impact(state["profile"], txn, reverse=True)
             _sync_to_postgres(user_id, profile=state["profile"], deleted_txn_id=transaction_id)
             break
+
+    bump_user_revision(user_id)
 
 
 def restore_transaction(user_id: str, transaction_id: str) -> None:
@@ -848,6 +793,8 @@ def restore_transaction(user_id: str, transaction_id: str) -> None:
             _sync_to_postgres(user_id, txn=txn, profile=state["profile"])
             break
 
+    bump_user_revision(user_id)
+
 
 def delete_simulation(user_id: str, sim_id: str) -> None:
     history = get_state(user_id)["simulation_history"]
@@ -864,7 +811,7 @@ def delete_simulation(user_id: str, sim_id: str) -> None:
 
 
 def update_budgets(user_id: str, budgets: list[dict]) -> list[dict]:
-    get_state(user_id)["budgets"] = deepcopy(budgets)
+    get_state(user_id)["budgets"] = [dict(b) for b in budgets]
 
     if SessionLocal:
         try:
@@ -890,7 +837,8 @@ def update_budgets(user_id: str, budgets: list[dict]) -> list[dict]:
         except Exception as e:
             print(f"[DB update_budgets] Error: {e}")
 
-    return deepcopy(budgets)
+    bump_user_revision(user_id)
+    return budgets
 
 
 def add_simulation(user_id: str, simulation: dict) -> dict:
@@ -921,6 +869,108 @@ def add_simulation(user_id: str, simulation: dict) -> dict:
     return deepcopy(history_item)
 
 
+def sync_debt_recurring_transactions(user_id: str) -> None:
+    """Synchronize all active debts into recurring transactions in both memory state and PostgreSQL."""
+    state = get_state(user_id)
+    debts = state.get("debts", [])
+    recurring = state.setdefault("recurring_transactions", [])
+
+    debt_map = {str(d.get("id")): d for d in debts if d.get("id")}
+    existing_debt_ids = set()
+
+    for r in recurring:
+        d_id = r.get("debt_id")
+        if not d_id:
+            continue
+        d_id_str = str(d_id)
+        if d_id_str in debt_map:
+            existing_debt_ids.add(d_id_str)
+            d = debt_map[d_id_str]
+            is_active = (
+                d.get("status") != "paid_off"
+                and float(d.get("outstanding", 0.0)) > 0
+                and bool(d.get("auto_deduct", True))
+            )
+            name = d.get("name") or "Loan"
+            if not name.lower().endswith("emi") and "loan" not in name.lower():
+                name = f"{name} EMI"
+            r["name"] = name
+            r["amount"] = float(d.get("emi", 0.0))
+            r["category"] = "Mandatory EMI"
+            r["type"] = "expense"
+            r["day_of_month"] = int(d.get("emi_day", 5))
+            r["is_active"] = is_active
+            if d.get("last_payment_date"):
+                r["last_processed_date"] = d.get("last_payment_date")
+        else:
+            r["is_active"] = False
+            r["amount"] = 0.0
+
+    for d_id_str, d in debt_map.items():
+        if d_id_str not in existing_debt_ids:
+            is_active = (
+                d.get("status") != "paid_off"
+                and float(d.get("outstanding", 0.0)) > 0
+                and bool(d.get("auto_deduct", True))
+            )
+            name = d.get("name") or "Loan"
+            if not name.lower().endswith("emi") and "loan" not in name.lower():
+                name = f"{name} EMI"
+            new_item = {
+                "id": str(uuid4()),
+                "name": name,
+                "amount": float(d.get("emi", 0.0)),
+                "category": "Mandatory EMI",
+                "type": "expense",
+                "day_of_month": int(d.get("emi_day", 5)),
+                "is_active": is_active,
+                "debt_id": d_id_str,
+                "last_processed_date": d.get("last_payment_date"),
+                "created_at": datetime.now().isoformat(),
+            }
+            recurring.append(new_item)
+            existing_debt_ids.add(d_id_str)
+
+    if SessionLocal:
+        try:
+            db = SessionLocal()
+            db_recs = db.query(RecurringTransaction).filter(RecurringTransaction.user_id == user_id).all()
+            db_rec_map = {r.debt_id: r for r in db_recs if r.debt_id}
+
+            for r in recurring:
+                d_id = r.get("debt_id")
+                if not d_id:
+                    continue
+                if d_id in db_rec_map:
+                    row = db_rec_map[d_id]
+                    row.name = r["name"]
+                    row.amount = r["amount"]
+                    row.category = r["category"]
+                    row.type = r["type"]
+                    row.day_of_month = r["day_of_month"]
+                    row.is_active = r["is_active"]
+                    if r.get("last_processed_date"):
+                        row.last_processed_date = r["last_processed_date"]
+                else:
+                    new_row = RecurringTransaction(
+                        id=r["id"],
+                        user_id=user_id,
+                        name=r["name"],
+                        amount=r["amount"],
+                        category=r["category"],
+                        type=r["type"],
+                        day_of_month=r["day_of_month"],
+                        is_active=r["is_active"],
+                        debt_id=d_id,
+                        last_processed_date=r.get("last_processed_date"),
+                    )
+                    db.add(new_row)
+            db.commit()
+            db.close()
+        except Exception as e:
+            print(f"[DB sync_debt_recurring_transactions] Error: {e}")
+
+
 def add_debt(user_id: str, debt_data: dict) -> dict:
     state = get_state(user_id)
     debts = state.setdefault("debts", [])
@@ -941,18 +991,27 @@ def add_debt(user_id: str, debt_data: dict) -> dict:
     start_date = str(debt_data.get("start_date") or date.today().strftime("%Y-%m-%d"))
     end_date = str(debt_data.get("end_date") or "")
     emi_day = int(debt_data.get("emi_day", 5))
-    last_payment_date = debt_data.get("last_payment_date")
+    last_payment_date = debt_data.get("last_payment_date") or date.today().strftime("%Y-%m")
     auto_deduct = bool(debt_data.get("auto_deduct", True))
     status = str(debt_data.get("status", "active"))
+    account_number = str(debt_data.get("account_number") or "").strip()
+    interest_type = str(debt_data.get("interest_type") or "Floating").strip()
+    is_secured = bool(debt_data.get("is_secured", False))
+    collateral = str(debt_data.get("collateral") or "").strip()
+    prepayment_penalty_pct = float(debt_data.get("prepayment_penalty_pct", 0.0))
+    linked_account = str(debt_data.get("linked_account") or "").strip()
+    notes = str(debt_data.get("notes") or "").strip()
 
     new_debt = {
         "id": debt_id,
         "name": name,
         "loan_type": loan_type,
         "lender": lender,
+        "account_number": account_number,
         "principal": principal,
         "outstanding": outstanding,
         "interest_rate": interest_rate,
+        "interest_type": interest_type,
         "emi": emi,
         "total_tenure_months": total_tenure_months,
         "tenure_elapsed_months": tenure_elapsed_months,
@@ -960,6 +1019,11 @@ def add_debt(user_id: str, debt_data: dict) -> dict:
         "start_date": start_date,
         "end_date": end_date,
         "emi_day": emi_day,
+        "is_secured": is_secured,
+        "collateral": collateral,
+        "prepayment_penalty_pct": prepayment_penalty_pct,
+        "linked_account": linked_account,
+        "notes": notes,
         "last_payment_date": last_payment_date,
         "auto_deduct": auto_deduct,
         "status": status,
@@ -978,9 +1042,11 @@ def add_debt(user_id: str, debt_data: dict) -> dict:
                 name=name,
                 loan_type=loan_type,
                 lender=lender,
+                account_number=account_number,
                 principal=principal,
                 outstanding=outstanding,
                 interest_rate=interest_rate,
+                interest_type=interest_type,
                 emi=emi,
                 total_tenure_months=total_tenure_months,
                 tenure_elapsed_months=tenure_elapsed_months,
@@ -988,6 +1054,11 @@ def add_debt(user_id: str, debt_data: dict) -> dict:
                 start_date=start_date,
                 end_date=end_date,
                 emi_day=emi_day,
+                is_secured=is_secured,
+                collateral=collateral,
+                prepayment_penalty_pct=prepayment_penalty_pct,
+                linked_account=linked_account,
+                notes=notes,
                 last_payment_date=last_payment_date,
                 auto_deduct=auto_deduct,
                 status=status,
@@ -999,7 +1070,9 @@ def add_debt(user_id: str, debt_data: dict) -> dict:
             print(f"[DB add_debt] Error: {e}")
 
     _sync_to_postgres(user_id, profile=state["profile"])
-    return deepcopy(new_debt)
+    sync_debt_recurring_transactions(user_id)
+    bump_user_revision(user_id)
+    return new_debt
 
 
 def update_debt(user_id: str, debt_id: str, debt_data: dict) -> dict:
@@ -1016,9 +1089,11 @@ def update_debt(user_id: str, debt_id: str, debt_data: dict) -> dict:
     if "name" in debt_data: target["name"] = str(debt_data["name"]).strip()
     if "loan_type" in debt_data: target["loan_type"] = str(debt_data["loan_type"]).strip()
     if "lender" in debt_data: target["lender"] = str(debt_data["lender"]).strip()
+    if "account_number" in debt_data: target["account_number"] = str(debt_data["account_number"]).strip()
     if "principal" in debt_data: target["principal"] = float(debt_data["principal"])
     if "outstanding" in debt_data: target["outstanding"] = float(debt_data["outstanding"])
     if "interest_rate" in debt_data: target["interest_rate"] = float(debt_data["interest_rate"])
+    if "interest_type" in debt_data: target["interest_type"] = str(debt_data["interest_type"]).strip()
     if "emi" in debt_data: target["emi"] = float(debt_data["emi"])
     if "total_tenure_months" in debt_data: target["total_tenure_months"] = int(debt_data["total_tenure_months"])
     if "tenure_elapsed_months" in debt_data: target["tenure_elapsed_months"] = int(debt_data["tenure_elapsed_months"])
@@ -1026,6 +1101,11 @@ def update_debt(user_id: str, debt_id: str, debt_data: dict) -> dict:
     if "start_date" in debt_data: target["start_date"] = str(debt_data["start_date"])
     if "end_date" in debt_data: target["end_date"] = str(debt_data["end_date"])
     if "emi_day" in debt_data: target["emi_day"] = int(debt_data["emi_day"])
+    if "is_secured" in debt_data: target["is_secured"] = bool(debt_data["is_secured"])
+    if "collateral" in debt_data: target["collateral"] = str(debt_data["collateral"]).strip()
+    if "prepayment_penalty_pct" in debt_data: target["prepayment_penalty_pct"] = float(debt_data["prepayment_penalty_pct"])
+    if "linked_account" in debt_data: target["linked_account"] = str(debt_data["linked_account"]).strip()
+    if "notes" in debt_data: target["notes"] = str(debt_data["notes"]).strip()
     if "last_payment_date" in debt_data: target["last_payment_date"] = debt_data["last_payment_date"]
     if "auto_deduct" in debt_data: target["auto_deduct"] = bool(debt_data["auto_deduct"])
     if "status" in debt_data: target["status"] = str(debt_data["status"])
@@ -1038,9 +1118,10 @@ def update_debt(user_id: str, debt_id: str, debt_data: dict) -> dict:
             db = SessionLocal()
             db_d = db.query(Debt).filter(Debt.id == debt_id, Debt.user_id == user_id).first()
             if db_d:
-                for k in ["name", "loan_type", "lender", "principal", "outstanding", "interest_rate", "emi",
-                          "total_tenure_months", "tenure_elapsed_months", "remaining_months", "start_date",
-                          "end_date", "emi_day", "last_payment_date", "auto_deduct", "status"]:
+                for k in ["name", "loan_type", "lender", "account_number", "principal", "outstanding",
+                          "interest_rate", "interest_type", "emi", "total_tenure_months", "tenure_elapsed_months",
+                          "remaining_months", "start_date", "end_date", "emi_day", "is_secured", "collateral",
+                          "prepayment_penalty_pct", "linked_account", "notes", "last_payment_date", "auto_deduct", "status"]:
                     if k in target and hasattr(db_d, k):
                         setattr(db_d, k, target[k])
                 db.commit()
@@ -1049,7 +1130,9 @@ def update_debt(user_id: str, debt_id: str, debt_data: dict) -> dict:
             print(f"[DB update_debt] Error: {e}")
 
     _sync_to_postgres(user_id, profile=state["profile"])
-    return deepcopy(target)
+    sync_debt_recurring_transactions(user_id)
+    bump_user_revision(user_id)
+    return target
 
 
 def delete_debt(user_id: str, debt_id: str) -> None:
@@ -1060,16 +1143,23 @@ def delete_debt(user_id: str, debt_id: str) -> None:
     state["profile"]["total_debt"] = max(0.0, round(sum(float(d.get("outstanding", 0.0)) for d in state["debts"]), 2))
     state["profile"]["monthly_debt_payment"] = max(0.0, round(sum(float(d.get("emi", 0.0)) for d in state["debts"] if d.get("status") != "paid_off"), 2))
 
+    # Also delete associated recurring transaction
+    recurring = state.setdefault("recurring_transactions", [])
+    state["recurring_transactions"] = [r for r in recurring if str(r.get("debt_id")) != str(debt_id)]
+
     if SessionLocal:
         try:
             db = SessionLocal()
             db.query(Debt).filter(Debt.id == debt_id, Debt.user_id == user_id).delete()
+            db.query(RecurringTransaction).filter(RecurringTransaction.debt_id == debt_id, RecurringTransaction.user_id == user_id).delete()
             db.commit()
             db.close()
         except Exception as e:
             print(f"[DB delete_debt] Error: {e}")
 
     _sync_to_postgres(user_id, profile=state["profile"])
+    sync_debt_recurring_transactions(user_id)
+    bump_user_revision(user_id)
 
 
 def pay_debt_emi(user_id: str, debt_id: str, payload: dict = None) -> dict:
@@ -1145,6 +1235,7 @@ def pay_debt_emi(user_id: str, debt_id: str, payload: dict = None) -> dict:
             print(f"[DB pay_debt_emi] Error: {e}")
 
     _sync_to_postgres(user_id, profile=state["profile"], txn=txn_data)
+    sync_debt_recurring_transactions(user_id)
 
     return {
         "debt": deepcopy(target),
@@ -1225,6 +1316,7 @@ def prepay_debt(user_id: str, debt_id: str, amount: float, strategy: str = "redu
             print(f"[DB prepay_debt] Error: {e}")
 
     _sync_to_postgres(user_id, profile=state["profile"], txn=txn_data)
+    sync_debt_recurring_transactions(user_id)
     return deepcopy(target)
 
 
@@ -1246,8 +1338,17 @@ def process_monthly_debts(user_id: str) -> list[dict]:
         last_paid = d.get("last_payment_date")
         emi_day = int(d.get("emi_day", 5))
 
+        # Check if an EMI payment transaction was already logged for this debt in current month
+        already_logged = False
+        target_token = f"{d['name']} ({current_month})"
+        for tx in state.get("transactions", []):
+            if tx.get("category") == "Mandatory EMI" and target_token in tx.get("description", ""):
+                already_logged = True
+                d["last_payment_date"] = current_month
+                break
+
         # If not paid for current month yet and current day has reached or passed emi_day
-        if last_paid != current_month and current_day >= emi_day:
+        if not already_logged and last_paid != current_month and current_day >= emi_day:
             try:
                 result = pay_debt_emi(user_id, str(d["id"]), {
                     "amount": float(d.get("emi", 0.0)),
@@ -1414,9 +1515,15 @@ def update_monthly_income_suite(user_id: str, amount: float, apply_to_all_months
 
     history = profile.setdefault("monthly_income_history", {"default": profile.get("monthly_income", 50000)})
 
+    existing_income = float(profile.get("monthly_income", 0.0))
+    is_supplemental = existing_income > 0 and amount < (existing_income * 0.6)
+
     if apply_to_all_months and amount > 0:
-        profile["monthly_income"] = float(amount)
-        history["default"] = float(amount)
+        if is_supplemental:
+            profile["other_income"] = float(profile.get("other_income", 0.0) + amount)
+        else:
+            profile["monthly_income"] = float(amount)
+            history["default"] = float(amount)
     else:
         current_effective = history.get(current_month, profile.get("monthly_income", 50000))
         history[current_month] = float(current_effective + amount)
@@ -1439,7 +1546,10 @@ def update_monthly_income_suite(user_id: str, amount: float, apply_to_all_months
             db = SessionLocal()
             db_prof = db.query(FinancialProfile).filter(FinancialProfile.user_id == user_id).first()
             if db_prof and apply_to_all_months and amount > 0:
-                db_prof.monthly_income = float(amount)
+                if is_supplemental:
+                    db_prof.other_income = float((db_prof.other_income or 0.0) + amount)
+                else:
+                    db_prof.monthly_income = float(amount)
 
             adj_row = IncomeAdjustment(
                 id=adj_id,
@@ -1459,7 +1569,8 @@ def update_monthly_income_suite(user_id: str, amount: float, apply_to_all_months
 
 
 def get_recurring_transactions(user_id: str) -> list[dict]:
-    """Retrieve all recurring transactions configured by the user."""
+    """Retrieve all recurring transactions configured by the user, synced with active debts."""
+    sync_debt_recurring_transactions(user_id)
     state = get_state(user_id)
     return deepcopy(state.get("recurring_transactions", []))
 
@@ -1476,6 +1587,7 @@ def add_recurring_transaction(user_id: str, item: dict) -> dict:
         "type": item.get("type") or "expense",
         "day_of_month": int(item.get("day_of_month") or 1),
         "is_active": bool(item.get("is_active", True)),
+        "debt_id": item.get("debt_id"),
         "last_processed_date": item.get("last_processed_date"),
         "created_at": datetime.now().isoformat(),
     }
@@ -1493,6 +1605,7 @@ def add_recurring_transaction(user_id: str, item: dict) -> dict:
                 type=new_item["type"],
                 day_of_month=new_item["day_of_month"],
                 is_active=new_item["is_active"],
+                debt_id=new_item.get("debt_id"),
                 last_processed_date=new_item["last_processed_date"],
             )
             db.add(r_row)
@@ -1516,6 +1629,33 @@ def update_recurring_transaction(user_id: str, item_id: str, item: dict) -> dict
             break
     if not updated:
         raise ValueError(f"Recurring transaction {item_id} not found")
+
+    # If linked to a debt, keep the debt in sync
+    d_id = updated.get("debt_id")
+    if d_id:
+        target_debt = next((d for d in state.get("debts", []) if str(d.get("id")) == str(d_id)), None)
+        if target_debt:
+            if "is_active" in item:
+                target_debt["auto_deduct"] = bool(item["is_active"])
+            if "amount" in item:
+                target_debt["emi"] = float(item["amount"])
+            if "day_of_month" in item:
+                target_debt["emi_day"] = int(item["day_of_month"])
+        if SessionLocal:
+            try:
+                db = SessionLocal()
+                db_d = db.query(Debt).filter(Debt.id == d_id, Debt.user_id == user_id).first()
+                if db_d:
+                    if "is_active" in item:
+                        db_d.auto_deduct = bool(item["is_active"])
+                    if "amount" in item:
+                        db_d.emi = float(item["amount"])
+                    if "day_of_month" in item:
+                        db_d.emi_day = int(item["day_of_month"])
+                    db.commit()
+                db.close()
+            except Exception as e:
+                print(f"[DB update_recurring_transaction linked debt sync] Error: {e}")
 
     if SessionLocal:
         try:
@@ -1548,6 +1688,25 @@ def delete_recurring_transaction(user_id: str, item_id: str) -> None:
     """Delete a recurring transaction."""
     state = get_state(user_id)
     recurring = state.setdefault("recurring_transactions", [])
+    target = next((r for r in recurring if str(r.get("id")) == str(item_id)), None)
+
+    if target and target.get("debt_id"):
+        d_id = target["debt_id"]
+        for d in state.get("debts", []):
+            if str(d.get("id")) == str(d_id):
+                d["auto_deduct"] = False
+                break
+        if SessionLocal:
+            try:
+                db = SessionLocal()
+                db_d = db.query(Debt).filter(Debt.id == d_id, Debt.user_id == user_id).first()
+                if db_d:
+                    db_d.auto_deduct = False
+                    db.commit()
+                db.close()
+            except Exception as e:
+                print(f"[DB delete_recurring_transaction debt unlink] Error: {e}")
+
     state["recurring_transactions"] = [r for r in recurring if str(r.get("id")) != str(item_id)]
 
     if SessionLocal:
@@ -1562,6 +1721,7 @@ def delete_recurring_transaction(user_id: str, item_id: str) -> None:
 
 def process_recurring_transactions(user_id: str) -> list[dict]:
     """Check active recurring transactions and auto-inject into ledger for current month if due."""
+    sync_debt_recurring_transactions(user_id)
     state = get_state(user_id)
     recurring = state.setdefault("recurring_transactions", [])
     current_month = datetime.now().strftime("%Y-%m")
@@ -1574,10 +1734,38 @@ def process_recurring_transactions(user_id: str) -> list[dict]:
         if r.get("last_processed_date") != current_month:
             due_day = min(r.get("day_of_month", 1), 28)
             txn_date = f"{current_month}-{due_day:02d}"
+
+            # If linked to a loan/debt, execute scheduled EMI with full amortization
+            debt_id = r.get("debt_id")
+            if debt_id:
+                debt = next((d for d in state.get("debts", []) if str(d.get("id")) == str(debt_id)), None)
+                if debt and debt.get("status") != "paid_off" and float(debt.get("outstanding", 0.0)) > 0:
+                    try:
+                        res = pay_debt_emi(user_id, debt_id, {
+                            "amount": float(r.get("amount", debt.get("emi", 0.0))),
+                            "date": txn_date,
+                        })
+                        r["last_processed_date"] = current_month
+                        r["last_processed_at"] = datetime.now().isoformat()
+                        if SessionLocal:
+                            try:
+                                db = SessionLocal()
+                                db_r = db.query(RecurringTransaction).filter(RecurringTransaction.user_id == user_id, RecurringTransaction.id == r["id"]).first()
+                                if db_r:
+                                    db_r.last_processed_date = current_month
+                                    db.commit()
+                                db.close()
+                            except Exception as e:
+                                print(f"[DB process_recurring_transactions debt] Error: {e}")
+                        created_txns.append(state["transactions"][0])
+                        continue
+                    except Exception as e:
+                        print(f"[process_recurring_transactions] Error processing debt EMI: {e}")
+
             auto_txn = {
                 "id": str(uuid4()),
                 "date": txn_date,
-                "description": f"{r.get('name')} (Auto-Recurring)",
+                "description": r.get('name'),
                 "category": r.get("category", "Rent"),
                 "type": r.get("type", "expense"),
                 "amount": float(r.get("amount", 0.0)),

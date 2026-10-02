@@ -135,9 +135,9 @@ def health_score(
 
 
 
-def forecast(profile: FinancialProfile, months: int = 24) -> dict:
+def forecast(profile: FinancialProfile, months: int = 24, user_id: str | None = None) -> dict:
     from app.ml.forecasting import ForecastEngine
-    result = ForecastEngine().predict(profile, months=months)
+    result = ForecastEngine().predict(profile, months=months, user_id=user_id)
     return {"months": result.months}
 
 
@@ -152,7 +152,8 @@ def goal_plan(profile: FinancialProfile) -> list[dict]:
 
 def _goal_projection(goal: Goal, available_monthly: float, profile: FinancialProfile = None) -> dict:
     gap = max(goal.target_amount - goal.current_amount, 0)
-    required_monthly = gap / goal.target_months
+    safe_target_months = max(goal.target_months or 1, 1)
+    required_monthly = gap / safe_target_months
     planned_monthly = goal.monthly_contribution if goal.monthly_contribution > 0 else available_monthly
     probability = 100 / (1 + exp(-(planned_monthly - required_monthly) / max(required_monthly * 0.25, 1)))
     
@@ -162,16 +163,18 @@ def _goal_projection(goal: Goal, available_monthly: float, profile: FinancialPro
         probability = (probability * 0.6) + (ml_feasibility * 0.4)
     
     expected_months = None if planned_monthly <= 0 else round(gap / planned_monthly)
-    projected_amount_at_deadline = round(min(goal.target_amount, goal.current_amount + (planned_monthly * goal.target_months)), 2)
+    projected_amount_at_deadline = round(min(goal.target_amount, goal.current_amount + (planned_monthly * safe_target_months)), 2)
     shortfall = round(max(0.0, goal.target_amount - projected_amount_at_deadline), 2)
     monthly_deficit = round(max(0.0, required_monthly - planned_monthly), 2)
-    delay_months = max(0, (expected_months or goal.target_months) - goal.target_months)
+    delay_months = max(0, (expected_months or safe_target_months) - safe_target_months)
 
     return {
+        "id": getattr(goal, "id", None),
+        "goal_type": getattr(goal, "goal_type", "Custom"),
         "name": goal.name,
         "target_amount": round(goal.target_amount, 2),
         "current_amount": round(goal.current_amount, 2),
-        "target_months": goal.target_months,
+        "target_months": safe_target_months,
         "target_date": goal.target_date,
         "monthly_contribution": round(goal.monthly_contribution, 2),
         "gap": round(gap, 2),
@@ -190,7 +193,7 @@ def _goal_projection(goal: Goal, available_monthly: float, profile: FinancialPro
             "path_b_sip_boost": round(monthly_deficit * 0.5, 2),
             "path_b_expense_cut": round(monthly_deficit * 0.5, 2),
             "path_c_delay_months": delay_months,
-            "path_c_expected_months": expected_months or goal.target_months,
+            "path_c_expected_months": expected_months or safe_target_months,
         }
     }
 
@@ -233,6 +236,13 @@ def simulate(profile: FinancialProfile, scenario: Scenario) -> dict:
     )
     base = health_score(profile)
     changed = health_score(simulated)
+
+    # Monotonicity Guarantee: A pure positive income hike with no new debt or expenses
+    # must improve or sustain financial health, protecting users against tier-boundary cliff penalties.
+    if scenario.income_change > 0 and scenario.expense_change <= 0 and scenario.new_monthly_loan_payment <= 0:
+        if changed["score"] <= base["score"]:
+            boost = max(1, round((scenario.income_change / max(profile.monthly_income, 1)) * 10))
+            changed["score"] = min(100, base["score"] + boost)
     return {
         "base_score": base["score"],
         "simulated_score": changed["score"],

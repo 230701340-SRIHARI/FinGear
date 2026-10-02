@@ -10,6 +10,6 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 @router.get("")
 def get_dashboard(user_id: str = Depends(get_current_user_id)) -> dict:
-    state = memory.state_copy(user_id)
+    state = memory.get_state(user_id)
     profile = FinancialProfile(**state["profile"])
-    return build_dashboard(profile, state["transactions"], state["budgets"])
+    return build_dashboard(profile, state["transactions"], state["budgets"], user_id=user_id)

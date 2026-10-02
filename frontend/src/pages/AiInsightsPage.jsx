@@ -1,14 +1,64 @@
-import { Activity, AlertTriangle, BrainCircuit, CheckCircle2, CircleDollarSign, Cpu, Database, Layers, LineChart, Receipt, RotateCcw, Shield, ShoppingBag, Sparkles, TrendingUp, Utensils, Zap } from "lucide-react";
+import { Activity, AlertTriangle, BrainCircuit, CheckCircle2, CircleDollarSign, Cpu, CreditCard, Database, Home, Layers, LineChart, Receipt, RotateCcw, Shield, ShoppingBag, Sparkles, TrendingUp, Utensils, Zap } from "lucide-react";
 import { useState } from "react";
 import { Badge, Button, Card, ConfirmModal, EmptyState, MetricCard, PageHeader, Progress, QuickLinks } from "../components/ui";
 import { useFinance } from "../context/FinanceContext";
 import { currency } from "../lib/format";
 
-const UNIVERSE_LABELS = {
+const UNIVERSE_META = {
   FOOD: { label: "Food", Icon: Utensils, color: "var(--accent-success)" },
+  DINING: { label: "Dining", Icon: Utensils, color: "var(--accent-warning)" },
+  RENT: { label: "Rent", Icon: Home, color: "var(--accent-info)" },
+  EMI: { label: "EMI", Icon: CreditCard, color: "var(--accent-danger)" },
+  MANDATORY_EMI: { label: "Mandatory EMI", Icon: CreditCard, color: "var(--accent-danger)" },
   SHOPPING: { label: "Shopping & Entertainment", Icon: ShoppingBag, color: "var(--accent-warning)" },
   OTHERS: { label: "Bills & Other", Icon: Receipt, color: "var(--accent)" },
+  GROCERIES: { label: "Groceries", Icon: Utensils, color: "var(--accent-success)" },
+  UTILITIES: { label: "Utilities", Icon: Receipt, color: "var(--accent)" },
+  TRANSPORT: { label: "Transport", Icon: Layers, color: "var(--accent-info)" },
+  HEALTHCARE: { label: "Healthcare", Icon: Shield, color: "var(--accent-danger)" },
+  INSURANCE: { label: "Insurance", Icon: Shield, color: "var(--accent-info)" },
+  EDUCATION: { label: "Education", Icon: Layers, color: "var(--accent-info)" },
+  ENTERTAINMENT: { label: "Entertainment", Icon: ShoppingBag, color: "var(--accent-warning)" },
+  TRAVEL: { label: "Travel", Icon: Layers, color: "var(--accent-warning)" },
+  LIFESTYLE: { label: "Lifestyle", Icon: Sparkles, color: "var(--accent-warning)" },
+  INVESTMENT: { label: "Investment", Icon: CircleDollarSign, color: "var(--accent-success)" },
 };
+
+function getUniverseMeta(key, info) {
+  if (!key) return { label: "Other", Icon: Layers, color: "var(--text-muted)" };
+  
+  const raw = String(key).trim();
+  const cleanKey = raw.replace(/^CATEGORY_/i, "").trim();
+  const upperKey = cleanKey.toUpperCase();
+
+  if (UNIVERSE_META[raw]) return UNIVERSE_META[raw];
+  if (UNIVERSE_META[cleanKey]) return UNIVERSE_META[cleanKey];
+  if (UNIVERSE_META[upperKey]) return UNIVERSE_META[upperKey];
+
+  if (info?.display_name) {
+    return {
+      label: info.display_name,
+      Icon: Layers,
+      color: "var(--accent-info)",
+    };
+  }
+
+  const formattedLabel = cleanKey
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map(w => {
+      const u = w.toUpperCase();
+      if (["EMI", "OTT", "FD", "SIP", "PPF", "NPS", "EPF", "GST", "UPI"].includes(u)) return u;
+      return u.charAt(0) + u.slice(1).toLowerCase();
+    })
+    .join(" ") || cleanKey;
+
+  return {
+    label: formattedLabel,
+    Icon: Layers,
+    color: "var(--accent-info)",
+  };
+}
 
 export function AiInsights() {
   const { aiStatus, aiForecast, aiAnomalies, acknowledgeAnomaly, resetAI } = useFinance();
@@ -32,9 +82,8 @@ export function AiInsights() {
   return (
     <>
       <PageHeader
-        eyebrow="On-Device Intelligence"
         title="AI Intelligence Center"
-        subtitle="Continuous online learning, expense forecasting, and category-isolated anomaly detection — all running server-side with pure NumPy."
+        subtitle="Continuous online learning, expense forecasting, and category-isolated anomaly detection — all running on device."
         actions={
           <Button variant="ghost" onClick={() => setShowReset(true)}>
             <RotateCcw size={16} /> Factory Reset
@@ -132,7 +181,7 @@ export function AiInsights() {
         {aiStatus?.anomaly_detection && (
           <div className="ai-universe-grid">
             {Object.entries(aiStatus.anomaly_detection).map(([key, info]) => {
-              const meta = UNIVERSE_LABELS[key] || { label: key, Icon: Layers, color: "var(--text-muted)" };
+              const meta = getUniverseMeta(key, info);
               const IconComp = meta.Icon || Layers;
               return (
                 <div key={key} className="ai-universe-card">
@@ -177,7 +226,7 @@ export function AiInsights() {
                     <Badge tone="danger">{currency(txn.amount)}</Badge>
                   </div>
                   <div className="anomaly-card-details">
-                    <span><strong>Category:</strong> {txn.category} → {anom.universe}</span>
+                    <span><strong>Category:</strong> {txn.category} → {getUniverseMeta(anom.universe).label}</span>
                     <span><strong>Score:</strong> {(anom.score * 100).toFixed(1)}%</span>
                     {anom.phase === 1 && (
                       <>

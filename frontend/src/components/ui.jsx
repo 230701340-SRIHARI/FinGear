@@ -3,8 +3,8 @@ import { Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cx } from "../lib/format";
 
-export function Card({ className, children, glow = false }) {
-  return <section className={cx("glass-card", glow && "glow-card", className)}>{children}</section>;
+export function Card({ className, children, glow = false, ...props }) {
+  return <section className={cx("glass-card", glow && "glow-card", className)} {...props}>{children}</section>;
 }
 
 export function PageHeader({ eyebrow, title, subtitle, actions }) {
@@ -51,12 +51,10 @@ export function Progress({ value, tone = "success" }) {
   );
 }
 
-export function Skeleton({ rows = 3 }) {
+export function Skeleton() {
   return (
-    <div className="skeleton-stack">
-      {Array.from({ length: rows }).map((_, index) => (
-        <span className="skeleton" key={index} />
-      ))}
+    <div style={{ padding: "14px 0", color: "var(--text-muted)", fontSize: "13px" }}>
+      Loading data...
     </div>
   );
 }
@@ -71,10 +69,9 @@ export function EmptyState({ title, detail, action }) {
   );
 }
 
-export function LoadingState({ label = "Loading financial model" }) {
+export function LoadingState({ label = "Loading data..." }) {
   return (
-    <div className="loading-state">
-      <Loader2 className="spin" size={18} />
+    <div className="loading-state" style={{ fontSize: "13px", color: "var(--text-muted)" }}>
       {label}
     </div>
   );

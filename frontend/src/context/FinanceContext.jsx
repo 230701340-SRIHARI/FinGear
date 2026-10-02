@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { demoProfile } from "../lib/demoProfile";
 import { useAuth } from "./AuthContext";
@@ -34,11 +34,18 @@ export function FinanceProvider({ children }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function refresh() {
+  const userRef = useRef(user);
+  userRef.current = user;
+
+  const dataRef = useRef(data);
+  dataRef.current = data;
+
+  const refresh = useCallback(async (scope = "all") => {
     if (!token) return;
     setLoading(true);
     setError("");
     try {
+      // Tier 1: Core financial state (instant UI readiness)
       const [
         rawProfile,
         dashboard,
@@ -49,16 +56,6 @@ export function FinanceProvider({ children }) {
         goals,
         investments,
         debt,
-        insights,
-        timeline,
-        reports,
-        settings,
-        security,
-        scenarioHistory,
-        copilotContext,
-        aiStatus,
-        aiForecast,
-        aiAnomalies,
         recurring,
       ] = await Promise.all([
         api.profile().catch(() => demoProfile),
@@ -70,26 +67,18 @@ export function FinanceProvider({ children }) {
         api.goals().catch(() => ({ goals: [], analysis: [] })),
         api.investments().catch(() => ({ items: [], allocation: [], total: 0, monthly_contribution: 0 })),
         api.debt().catch(() => ({ items: [], total: 0, monthly_emi: 0, debt_to_income: 0 })),
-        api.insights().catch(() => ({ insights: [] })),
-        api.timeline().catch(() => ({ events: [] })),
-        api.reports().catch(() => ({ reports: [] })),
-        api.settings().catch(() => null),
-        api.security().catch(() => null),
-        api.simulationHistory().catch(() => ({ history: [] })),
-        api.copilotContext().catch(() => ({ conversations: [] })),
-        api.ai.status().catch(() => null),
-        api.ai.forecast().catch(() => null),
-        api.ai.anomalies().catch(() => ({ anomalies: [], count: 0 })),
         api.recurringTransactions().catch(() => ({ recurring: [] })),
       ]);
 
+      const currentUser = userRef.current;
       const profile = {
         ...rawProfile,
-        name: (user?.name && rawProfile?.name === "Arjun Verma") ? user.name : (rawProfile?.name || user?.name || "Client"),
-        email: (user?.email && rawProfile?.email === "arjun.verma@example.com") ? user.email : (rawProfile?.email || user?.email || ""),
+        name: (currentUser?.name && rawProfile?.name === "Arjun Verma") ? currentUser.name : (rawProfile?.name || currentUser?.name || "Client"),
+        email: (currentUser?.email && rawProfile?.email === "arjun.verma@example.com") ? currentUser.email : (rawProfile?.email || currentUser?.email || ""),
       };
 
-      setData({
+      setData((current) => ({
+        ...current,
         profile,
         dashboard,
         transactions,
@@ -99,18 +88,52 @@ export function FinanceProvider({ children }) {
         goals,
         investments,
         debt,
-        insights,
-        timeline,
-        reports,
-        settings,
-        security,
-        scenarioHistory,
-        copilotContext,
-        aiStatus,
-        aiForecast,
-        aiAnomalies,
         recurring,
-      });
+      }));
+
+      // Immediate readiness for user
+      setLoading(false);
+
+      // Tier 2: Secondary / background intelligence (lazy, non-blocking)
+      if (scope === "all") {
+        Promise.all([
+          api.insights().catch(() => ({ insights: [] })),
+          api.timeline().catch(() => ({ events: [] })),
+          api.reports().catch(() => ({ reports: [] })),
+          api.settings().catch(() => null),
+          api.security().catch(() => null),
+          api.simulationHistory().catch(() => ({ history: [] })),
+          api.copilotContext().catch(() => ({ conversations: [] })),
+          api.ai.status().catch(() => null),
+          api.ai.forecast().catch(() => null),
+          api.ai.anomalies().catch(() => ({ anomalies: [], count: 0 })),
+        ]).then(([
+          insights,
+          timeline,
+          reports,
+          settings,
+          security,
+          scenarioHistory,
+          copilotContext,
+          aiStatus,
+          aiForecast,
+          aiAnomalies,
+        ]) => {
+          setData((current) => ({
+            ...current,
+            insights,
+            timeline,
+            reports,
+            settings,
+            security,
+            scenarioHistory,
+            copilotContext,
+            aiStatus,
+            aiForecast,
+            aiAnomalies,
+          }));
+        });
+      }
     } catch (err) {
       console.error("Finance refresh error:", err);
       const msg = String(err?.message || err).toLowerCase();
@@ -119,24 +142,25 @@ export function FinanceProvider({ children }) {
       } else {
         setError("Backend unavailable. Local sample data remains visible.");
       }
+      const currentUser = userRef.current;
       setData((current) => ({
         ...current,
         profile: {
           ...(current.profile || demoProfile),
-          name: user?.name || current.profile?.name || "Client",
-          email: user?.email || current.profile?.email || "",
+          name: currentUser?.name || current.profile?.name || "Client",
+          email: currentUser?.email || current.profile?.email || "",
         },
       }));
-    } finally {
       setLoading(false);
     }
-  }
+  }, [token]);
 
-  async function saveProfile(profile) {
+  const saveProfile = useCallback(async (profile) => {
+    const currentUser = userRef.current;
     const payload = {
       ...profile,
-      name: (user?.name && profile.name === "Arjun Verma") ? user.name : (profile.name || user?.name || "Client"),
-      email: (user?.email && profile.email === "arjun.verma@example.com") ? user.email : (profile.email || user?.email || ""),
+      name: (currentUser?.name && profile.name === "Arjun Verma") ? currentUser.name : (profile.name || currentUser?.name || "Client"),
+      email: (currentUser?.email && profile.email === "arjun.verma@example.com") ? currentUser.email : (profile.email || currentUser?.email || ""),
     };
     try {
       const updated = await api.updateProfile(payload);
@@ -145,9 +169,9 @@ export function FinanceProvider({ children }) {
       setData((current) => ({ ...current, profile: payload }));
     }
     await refresh();
-  }
+  }, [refresh]);
 
-  async function addTransaction(transaction) {
+  const addTransaction = useCallback(async (transaction) => {
     // 1. Instant optimistic asset & ledger update for 0ms reactivity
     const amount = Number(transaction.amount) || 0;
     const cat = transaction.category;
@@ -217,31 +241,32 @@ export function FinanceProvider({ children }) {
     });
 
     // 2. Persist to backend and synchronize
-    await api.createTransaction(transaction);
-    await refresh();
-  }
+    const created = await api.createTransaction(transaction);
+    await refresh("core");
+    return created; // caller can inspect created.anomaly_flag
+  }, [refresh]);
 
-  async function deleteTransaction(id) {
+  const deleteTransaction = useCallback(async (id) => {
     setError("");
     try {
       await api.deleteTransaction(id);
-      await refresh();
+      await refresh("core");
     } catch (err) {
       setError(err.message || "Could not delete this transaction.");
     }
-  }
+  }, [refresh]);
 
-  async function deleteSimulation(id) {
+  const deleteSimulation = useCallback(async (id) => {
     setError("");
     try {
       await api.deleteSimulation(id);
-      await refresh();
+      await refresh("core");
     } catch (err) {
       setError(err.message || "Could not delete this simulation.");
     }
-  }
+  }, [refresh]);
 
-  async function addGoal(goal) {
+  const addGoal = useCallback(async (goal) => {
     setError("");
     const created = await api.createGoal(goal);
     setData((current) => ({
@@ -249,11 +274,11 @@ export function FinanceProvider({ children }) {
       goals: { goals: created.goals, analysis: created.analysis },
       profile: { ...current.profile, goals: created.goals },
     }));
-    await refresh();
+    await refresh("core");
     return created;
-  }
+  }, [refresh]);
 
-  async function updateGoal(goalName, goal) {
+  const updateGoal = useCallback(async (goalName, goal) => {
     setError("");
     const updated = await api.updateGoal(goalName, goal);
     setData((current) => ({
@@ -261,11 +286,11 @@ export function FinanceProvider({ children }) {
       goals: { goals: updated.goals, analysis: updated.analysis },
       profile: { ...current.profile, goals: updated.goals },
     }));
-    await refresh();
+    await refresh("core");
     return updated;
-  }
+  }, [refresh]);
 
-  async function deleteGoal(goalName) {
+  const deleteGoal = useCallback(async (goalName) => {
     setError("");
     try {
       const result = await api.deleteGoal(goalName);
@@ -274,13 +299,13 @@ export function FinanceProvider({ children }) {
         goals: { goals: result.goals, analysis: result.analysis },
         profile: { ...current.profile, goals: result.goals },
       }));
-      await refresh();
+      await refresh("core");
     } catch (err) {
       setError(err.message || "Could not delete this goal.");
     }
-  }
+  }, [refresh]);
 
-  async function fetchForecast(period) {
+  const fetchForecast = useCallback(async (period) => {
     try {
       const forecastData = await api.forecast(period);
       setData((current) => ({
@@ -290,19 +315,19 @@ export function FinanceProvider({ children }) {
     } catch (err) {
       console.error("Failed to fetch forecast:", err);
     }
-  }
+  }, []);
 
-  async function runSimulation(scenario) {
-    const result = await api.simulate(data.profile, scenario);
+  const runSimulation = useCallback(async (scenario) => {
+    const result = await api.simulate(dataRef.current.profile, scenario);
     await refresh();
     return result;
-  }
+  }, [refresh]);
 
-  async function askCopilot(question) {
-    return api.copilot(question, data.profile);
-  }
+  const askCopilot = useCallback(async (question) => {
+    return api.copilot(question, dataRef.current.profile);
+  }, []);
 
-  async function acknowledgeAnomaly(txnId) {
+  const acknowledgeAnomaly = useCallback(async (txnId) => {
     setError("");
     try {
       await api.ai.acknowledge(txnId);
@@ -310,9 +335,9 @@ export function FinanceProvider({ children }) {
     } catch (err) {
       setError(err.message || "Could not acknowledge anomaly.");
     }
-  }
+  }, [refresh]);
 
-  async function excludeAnomaly(txnId) {
+  const excludeAnomaly = useCallback(async (txnId) => {
     setError("");
     try {
       await api.ai.exclude(txnId);
@@ -320,9 +345,9 @@ export function FinanceProvider({ children }) {
     } catch (err) {
       setError(err.message || "Could not exclude anomaly.");
     }
-  }
+  }, [refresh]);
 
-  async function resetAI() {
+  const resetAI = useCallback(async () => {
     setError("");
     try {
       await api.ai.reset();
@@ -330,162 +355,162 @@ export function FinanceProvider({ children }) {
     } catch (err) {
       setError(err.message || "Could not reset AI engine.");
     }
-  }
+  }, [refresh]);
 
-  async function restoreTransaction(id) {
+  const restoreTransaction = useCallback(async (id) => {
     setError("");
     try {
       await api.restoreTransaction(id);
-      await refresh();
+      await refresh("core");
     } catch (err) {
       setError(err.message || "Could not restore this transaction.");
     }
-  }
+  }, [refresh]);
 
-  async function updateIncomeSuite(amount, applyToAllMonths) {
+  const updateIncomeSuite = useCallback(async (amount, applyToAllMonths) => {
     setError("");
     try {
       await api.updateIncomeSuite({ amount, apply_to_all_months: applyToAllMonths });
-      await refresh();
+      await refresh("core");
     } catch (err) {
       setError(err.message || "Could not update income suite.");
     }
-  }
+  }, [refresh]);
 
-  async function updateBudgets(items) {
+  const updateBudgets = useCallback(async (items) => {
     setError("");
     try {
       await api.updateBudgets(items);
-      await refresh();
+      await refresh("core");
     } catch (err) {
       setError(err.message || "Could not update budgets.");
     }
-  }
+  }, [refresh]);
 
-  async function addRecurringTransaction(item) {
+  const addRecurringTransaction = useCallback(async (item) => {
     setError("");
     try {
       await api.createRecurringTransaction(item);
-      await refresh();
+      await refresh("core");
     } catch (err) {
       setError(err.message || "Could not create recurring transaction.");
     }
-  }
+  }, [refresh]);
 
-  async function updateRecurringTransaction(id, item) {
+  const updateRecurringTransaction = useCallback(async (id, item) => {
     setError("");
     try {
       await api.updateRecurringTransaction(id, item);
-      await refresh();
+      await refresh("core");
     } catch (err) {
       setError(err.message || "Could not update recurring transaction.");
     }
-  }
+  }, [refresh]);
 
-  async function deleteRecurringTransaction(id) {
+  const deleteRecurringTransaction = useCallback(async (id) => {
     setError("");
     try {
       await api.deleteRecurringTransaction(id);
-      await refresh();
+      await refresh("core");
     } catch (err) {
       setError(err.message || "Could not delete recurring transaction.");
     }
-  }
+  }, [refresh]);
 
-  async function processRecurring() {
+  const processRecurring = useCallback(async () => {
     try {
       await api.processRecurringTransactions();
-      await refresh();
+      await refresh("core");
     } catch (err) {
       console.error("Failed to process recurring transactions:", err);
     }
-  }
+  }, [refresh]);
 
-  async function uploadBill(file) {
+  const uploadBill = useCallback(async (file) => {
     const formData = new FormData();
     formData.append("file", file);
     return api.uploadBill(formData);
-  }
+  }, []);
 
-  async function fetchDeletedTransactions() {
+  const fetchDeletedTransactions = useCallback(async () => {
     try {
       const res = await api.deletedTransactions();
       return res.deleted_transactions || [];
     } catch {
       return [];
     }
-  }
+  }, []);
 
-  async function addDebt(debt) {
+  const addDebt = useCallback(async (debt) => {
     setError("");
     try {
       await api.addDebt(debt);
-      await refresh();
+      await refresh("core");
     } catch (err) {
       setError(err.message || "Could not add debt obligation.");
       throw err;
     }
-  }
+  }, [refresh]);
 
-  async function updateDebt(id, debt) {
+  const updateDebt = useCallback(async (id, debt) => {
     setError("");
     try {
       await api.updateDebt(id, debt);
-      await refresh();
+      await refresh("core");
     } catch (err) {
       setError(err.message || "Could not update debt obligation.");
       throw err;
     }
-  }
+  }, [refresh]);
 
-  async function deleteDebt(id) {
+  const deleteDebt = useCallback(async (id) => {
     setError("");
     try {
       await api.deleteDebt(id);
-      await refresh();
+      await refresh("core");
     } catch (err) {
       setError(err.message || "Could not delete debt obligation.");
       throw err;
     }
-  }
+  }, [refresh]);
 
-  async function payDebtEmi(id, payload = {}) {
+  const payDebtEmi = useCallback(async (id, payload = {}) => {
     setError("");
     try {
       const res = await api.payDebtEmi(id, payload);
-      await refresh();
+      await refresh("core");
       return res;
     } catch (err) {
       setError(err.message || "Could not record monthly EMI payment.");
       throw err;
     }
-  }
+  }, [refresh]);
 
-  async function prepayDebt(id, amount, strategy = "reduce_tenure") {
+  const prepayDebt = useCallback(async (id, amount, strategy = "reduce_tenure") => {
     setError("");
     try {
       const res = await api.prepayDebt(id, amount, strategy);
-      await refresh();
+      await refresh("core");
       return res;
     } catch (err) {
       setError(err.message || "Could not apply debt prepayment.");
       throw err;
     }
-  }
+  }, [refresh]);
 
-  async function processMonthlyDebts() {
+  const processMonthlyDebts = useCallback(async () => {
     try {
       const res = await api.processMonthlyDebts();
-      await refresh();
+      await refresh("core");
       return res;
     } catch (err) {
       console.error("Failed to process monthly debts:", err);
     }
-  }
+  }, [refresh]);
 
   useEffect(() => {
     refresh();
-  }, [token]);
+  }, [refresh]);
 
   const value = useMemo(
     () => ({
@@ -522,7 +547,40 @@ export function FinanceProvider({ children }) {
       deleteRecurringTransaction,
       processRecurring,
     }),
-    [data, loading, error]
+    [
+      data,
+      loading,
+      error,
+      refresh,
+      saveProfile,
+      addTransaction,
+      deleteTransaction,
+      restoreTransaction,
+      updateIncomeSuite,
+      updateBudgets,
+      uploadBill,
+      fetchDeletedTransactions,
+      deleteSimulation,
+      addGoal,
+      updateGoal,
+      deleteGoal,
+      addDebt,
+      updateDebt,
+      deleteDebt,
+      payDebtEmi,
+      prepayDebt,
+      processMonthlyDebts,
+      fetchForecast,
+      runSimulation,
+      askCopilot,
+      acknowledgeAnomaly,
+      excludeAnomaly,
+      resetAI,
+      addRecurringTransaction,
+      updateRecurringTransaction,
+      deleteRecurringTransaction,
+      processRecurring,
+    ]
   );
 
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;

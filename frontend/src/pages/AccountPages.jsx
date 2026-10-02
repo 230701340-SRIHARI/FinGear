@@ -1,5 +1,6 @@
-import { Bell, Database, Eye, Info, LockKeyhole, Palette, RotateCcw, Save, ShieldCheck, UserRound, Volume2, Zap } from "lucide-react";
+import { ArrowRight, Bell, Database, Eye, Info, LockKeyhole, Palette, RotateCcw, Save, ShieldCheck, UserRound, Volume2, Zap } from "lucide-react";
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { Badge, Button, Card, Field, MetricCard, NumberInput, PageHeader } from "../components/ui";
 import { useFinance } from "../context/FinanceContext";
 import { useAuth } from "../context/AuthContext";
@@ -96,7 +97,7 @@ function computeTierInfo(income, dependents = 0, incomeType = "Salaried") {
 
 export function Profile() {
   const { user } = useAuth();
-  const { profile, saveProfile } = useFinance();
+  const { profile, saveProfile, debt } = useFinance();
   const [draft, setDraft] = useState(() => {
     const expenses = (profile?.monthly_expenses?.length ? profile.monthly_expenses : profile?.detailed_expenses) || demoProfile.monthly_expenses;
     return {
@@ -331,11 +332,65 @@ export function Profile() {
           </Card>
 
           <Card>
-            <div className="section-title"><LockKeyhole /> Liabilities & EMI Obligations</div>
-            <div className="form-grid">
-              <Field label="Total Outstanding Debt (₹)"><NumberInput value={draft.total_debt} onChange={(val) => update("total_debt", val)} required /></Field>
-              <Field label="Total Monthly EMI Payments (₹)"><NumberInput value={draft.monthly_debt_payment} onChange={(val) => update("monthly_debt_payment", val)} required /></Field>
+            <div className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <LockKeyhole /> Liabilities & Formal Loan Obligations {(debt?.items?.length || 0) > 0 && `(${debt.items.length} Active)`}
+              </span>
+              <Link to="/debt">
+                <Button variant="secondary" size="sm" type="button" style={{ fontSize: "12px" }}>
+                  Manage in Debt Hub <ArrowRight size={13} />
+                </Button>
+              </Link>
             </div>
+            <div className="form-grid">
+              <Field label="Total Outstanding Debt (₹)">
+                <NumberInput value={draft.total_debt} onChange={(val) => update("total_debt", val)} required />
+              </Field>
+              <Field label="Total Monthly EMI Payments (₹)">
+                <NumberInput value={draft.monthly_debt_payment} onChange={(val) => update("monthly_debt_payment", val)} required />
+              </Field>
+            </div>
+
+            {/* Synchronized Loan Breakdown */}
+            {(debt?.items || []).length > 0 ? (
+              <div style={{ display: "grid", gap: "8px", borderTop: "1px solid var(--border-color)", paddingTop: "12px", marginTop: "12px" }}>
+                <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                  Active Loans
+                </span>
+                {(debt?.items || []).map((d) => (
+                  <div
+                    key={d.id || d.name}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "8px 12px",
+                      background: "var(--bg-elevated)",
+                      borderRadius: "4px",
+                      border: "1px solid var(--border-color)",
+                      fontSize: "13px"
+                    }}
+                  >
+                    <div>
+                      <strong style={{ color: "var(--text-primary)" }}>{d.name}</strong>
+                      <span style={{ color: "var(--text-muted)", fontSize: "12px", marginLeft: "6px" }}>
+                        ({d.lender ? `${d.lender} • ` : ""}{d.loan_type || "Loan"})
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
+                      <span style={{ color: "var(--text-muted)", fontSize: "12px" }}>EMI: {currency(d.emi)}/mo</span>
+                      <strong style={{ color: "var(--text-primary)", fontFamily: "var(--font-mono, monospace)" }}>
+                        {currency(d.outstanding)}
+                      </strong>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="muted" style={{ fontSize: "12px", margin: "10px 0 0" }}>
+                Tip: Track individual home loans, vehicle loans, education loans, and credit card EMIs in the <strong>Debt Hub</strong> to automate tenure progression and amortization tracking.
+              </p>
+            )}
           </Card>
         </section>
 
@@ -576,7 +631,7 @@ export function SettingsPage() {
         <MetricCard icon={<ShieldCheck />} label="Private routes" value="JWT" detail={security?.api_security || "Bearer tokens"} tone="info" />
         <MetricCard icon={<Database />} label="Data privacy" value="User-scoped" detail="Every entity belongs to a user" tone="ai" />
       </section>
-      
+
       <section className="grid-2">
         <Card>
           <div className="section-title"><LockKeyhole /> Change Password</div>
@@ -587,7 +642,7 @@ export function SettingsPage() {
             <div className="form-actions form-wide"><Button type="submit" disabled={updating}>{updating ? "Updating..." : "Update Password"}</Button></div>
           </form>
         </Card>
-        
+
         <Card>
           <div className="section-title"><ShieldCheck /> Active Sessions</div>
           <div className="data-table">
