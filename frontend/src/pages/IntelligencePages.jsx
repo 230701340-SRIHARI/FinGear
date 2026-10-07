@@ -1,7 +1,8 @@
 import { Activity, Bot, BrainCircuit, CalendarClock, CircleDollarSign, Compass, Cpu, Download, FileText, Goal, LineChart, MessageSquare, Printer, ShieldAlert, Sparkles, SlidersHorizontal, TrendingUp, X } from "lucide-react";
 import { useState, useEffect } from "react";
-import { HealthTrendChart, NetWorthChart, ScoreRadial } from "../components/charts";
+import { DailySpendForecastChart, HealthTrendChart, NetWorthChart, ScoreRadial } from "../components/charts";
 import { Badge, Button, Card, EmptyState, Field, MetricCard, PageHeader, Progress, QuickLinks } from "../components/ui";
+import { ProgressiveMLArchitecture } from "../components/ProgressiveMLArchitecture";
 import { useFinance } from "../context/FinanceContext";
 import { useAuth } from "../context/AuthContext";
 import { currency } from "../lib/format";
@@ -122,43 +123,80 @@ export function Health() {
           </div>
 
           <div className="grid-3" style={{ gap: '14px', marginBottom: '16px' }}>
-            <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Fixed Needs (Rent, Bills, EMI)</span>
-                <strong>{health.adaptive_ratio.actual_needs_pct}% / {health.adaptive_ratio.ideal_needs_pct}%</strong>
-              </div>
-              <Progress value={(health.adaptive_ratio.actual_needs_pct / Math.max(health.adaptive_ratio.ideal_needs_pct, 1)) * 100} tone={health.adaptive_ratio.actual_needs_pct <= health.adaptive_ratio.ideal_needs_pct ? "success" : "warning"} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
-                <span>Spent: {currency(health.adaptive_ratio.needs_amount)}</span>
-                <span>Tier Target: {health.adaptive_ratio.ideal_needs_pct}%</span>
-              </div>
-            </div>
+            {/* Needs Card */}
+            {(() => {
+              const actual = health.adaptive_ratio.needs_amount;
+              const target = health.adaptive_ratio.recommended_needs_amount;
+              const pct = target > 0 ? Math.min(Math.round((actual / target) * 100), 150) : 0;
+              const isOver = actual > target && target > 0;
+              const diff = Math.abs(actual - target);
+              return (
+                <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '14px', borderRadius: '8px', border: `1px solid ${isOver ? 'var(--accent-warning)' : 'var(--border-color)'}` }}>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Fixed Needs</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
+                    <strong style={{ fontSize: '16px', color: isOver ? 'var(--accent-warning)' : 'var(--text-primary)' }}>{currency(actual)}</strong>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>target {currency(target)}</span>
+                  </div>
+                  <Progress value={pct} tone={isOver ? 'warning' : 'success'} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                    <span>{pct}% of {health.adaptive_ratio.ideal_needs_pct}% tier target</span>
+                    <span style={{ color: isOver ? 'var(--accent-warning)' : 'var(--accent-success)' }}>
+                      {isOver ? `Over by ${currency(diff)}` : `${currency(diff)} under`}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
 
-            <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Discretionary Wants (Dining, OTT, Shopping)</span>
-                <strong style={{ color: health.adaptive_ratio.actual_wants_pct > health.adaptive_ratio.ideal_wants_pct ? 'var(--accent-warning)' : 'inherit' }}>
-                  {health.adaptive_ratio.actual_wants_pct}% / {health.adaptive_ratio.ideal_wants_pct}%
-                </strong>
-              </div>
-              <Progress value={(health.adaptive_ratio.actual_wants_pct / Math.max(health.adaptive_ratio.ideal_wants_pct, 1)) * 100} tone={health.adaptive_ratio.actual_wants_pct <= health.adaptive_ratio.ideal_wants_pct ? "success" : "warning"} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
-                <span>Spent: {currency(health.adaptive_ratio.wants_amount)}</span>
-                <span>Tier Target: {health.adaptive_ratio.ideal_wants_pct}%</span>
-              </div>
-            </div>
+            {/* Wants Card */}
+            {(() => {
+              const actual = health.adaptive_ratio.wants_amount;
+              const target = health.adaptive_ratio.recommended_wants_amount;
+              const pct = target > 0 ? Math.min(Math.round((actual / target) * 100), 150) : 0;
+              const isOver = actual > target && target > 0;
+              const diff = Math.abs(actual - target);
+              return (
+                <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '14px', borderRadius: '8px', border: `1px solid ${isOver ? 'var(--accent-warning)' : 'var(--border-color)'}` }}>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Discretionary Wants</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
+                    <strong style={{ fontSize: '16px', color: isOver ? 'var(--accent-warning)' : 'var(--text-primary)' }}>{currency(actual)}</strong>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>target {currency(target)}</span>
+                  </div>
+                  <Progress value={pct} tone={isOver ? 'warning' : 'success'} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                    <span>{pct}% of {health.adaptive_ratio.ideal_wants_pct}% tier target</span>
+                    <span style={{ color: isOver ? 'var(--accent-warning)' : 'var(--accent-success)' }}>
+                      {isOver ? `Over by ${currency(diff)}` : `${currency(diff)} headroom`}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
 
-            <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Savings & Wealth Building</span>
-                <strong style={{ color: 'var(--accent-success)' }}>{health.adaptive_ratio.actual_savings_pct}% / {health.adaptive_ratio.ideal_savings_pct}%</strong>
-              </div>
-              <Progress value={(health.adaptive_ratio.actual_savings_pct / Math.max(health.adaptive_ratio.ideal_savings_pct, 1)) * 100} tone="success" />
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
-                <span>Capacity: {currency(health.adaptive_ratio.savings_amount)}</span>
-                <span>Tier Target: {health.adaptive_ratio.ideal_savings_pct}%</span>
-              </div>
-            </div>
+            {/* Savings Card */}
+            {(() => {
+              const actual = health.adaptive_ratio.savings_amount;
+              const target = health.adaptive_ratio.recommended_savings_amount;
+              const pct = target > 0 ? Math.min(Math.round((actual / target) * 100), 150) : 0;
+              const isUnder = actual < target;
+              const diff = Math.abs(actual - target);
+              return (
+                <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '14px', borderRadius: '8px', border: `1px solid ${isUnder ? 'var(--border-color)' : 'var(--accent-success)'}` }}>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Savings & Wealth</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
+                    <strong style={{ fontSize: '16px', color: isUnder ? 'var(--text-primary)' : 'var(--accent-success)' }}>{currency(actual)}</strong>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>target {currency(target)}</span>
+                  </div>
+                  <Progress value={pct} tone={isUnder ? (pct >= 50 ? 'info' : 'warning') : 'success'} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                    <span>{pct}% of {health.adaptive_ratio.ideal_savings_pct}% tier target</span>
+                    <span style={{ color: isUnder ? 'var(--accent-warning)' : 'var(--accent-success)' }}>
+                      {isUnder ? `Gap: ${currency(diff)}/mo` : `On track ✓`}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           <div className="recommendation" style={{ margin: 0, fontSize: '13px' }}>
@@ -183,9 +221,9 @@ export function Health() {
           {(health?.components || []).map((item) => (
             <article key={item.label || item.id} style={{ display: "grid", gridTemplateColumns: "minmax(220px, 2fr) minmax(130px, 1fr) 110px", alignItems: "center", gap: "16px", padding: "12px", background: "rgba(255, 255, 255, 0.02)", borderRadius: "8px", border: "1px solid var(--border-color)" }}>
               <div>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                  <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{item.label}</strong>
-                  <Badge tone="info">{item.weight_pct}% weight · Max {item.max_points} pts</Badge>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "nowrap", overflow: "hidden" }}>
+                  <strong style={{ fontSize: "14px", color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{item.label}</strong>
+                  <Badge tone="info" style={{ flexShrink: 0, whiteSpace: "nowrap" }}>{item.weight_pct}% weight · Max {item.max_points} pts</Badge>
                 </div>
                 <span style={{ display: "block", fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>{item.reason}</span>
               </div>
@@ -230,8 +268,13 @@ export function Health() {
 
 
 export function Forecast() {
-  const { forecast, fetchForecast } = useFinance();
+  const { forecast, aiForecast, fetchForecast } = useFinance();
   const [period, setPeriod] = useState(24);
+  const dailyPredictions = forecast.daily_predictions?.length ? forecast.daily_predictions : (aiForecast?.daily_predictions || []);
+  const nextWeekSpend = dailyPredictions.reduce((total, day) => total + Number(day.predicted_spend || 0), 0);
+  const projectedHorizonNetWorth = forecast.months?.[forecast.months.length - 1]?.net_worth;
+  const tomorrowSpend = forecast.predicted_tomorrow ?? (dailyPredictions[0]?.predicted_spend ?? aiForecast?.predicted_tomorrow);
+  const tomorrowConfidence = dailyPredictions[0]?.confidence || forecast.confidence || aiForecast?.confidence || 85;
 
   useEffect(() => {
     fetchForecast(period);
@@ -247,21 +290,40 @@ export function Forecast() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <Badge tone="ai">{forecast.mode?.includes("Hybrid") || forecast.mode?.includes("Random Forest") ? "Adaptive Expense & Growth Twin" : (forecast.mode || "Predictive Wealth Engine")}</Badge>
             <Badge tone="info">Confidence: {forecast.confidence || 90}%</Badge>
-            <select value={period} onChange={(e) => setPeriod(Number(e.target.value))}>
-              {[6,12,24,36,60].map((m) => <option value={m} key={m}>{m} months</option>)}
-            </select>
           </div>
         } 
       />
+      <section className="metric-grid">
+        <MetricCard icon={<CalendarClock />} label="Next 7 Days Spend" value={dailyPredictions.length ? currency(nextWeekSpend) : "—"} detail="Total of daily predictions" tone="info" />
+        <MetricCard icon={<TrendingUp />} label="Tomorrow's Spend" value={tomorrowSpend != null ? currency(tomorrowSpend) : "—"} detail={tomorrowConfidence ? `${tomorrowConfidence}% model confidence` : "Forecast loading"} tone="success" />
+        <MetricCard icon={<CircleDollarSign />} label="Projected Net Worth" value={projectedHorizonNetWorth != null ? currency(projectedHorizonNetWorth) : "—"} detail={`${period}-month horizon`} tone="ai" />
+        <MetricCard icon={<Cpu />} label="Forecast Confidence" value={`${forecast.confidence || aiForecast?.confidence || 0}%`} detail={forecast.model_type || forecast.mode || "Model ready"} tone="info" />
+      </section>
       <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <div className="section-title"><CalendarClock /> Predicted Spend · Next 7 Days</div>
+        {dailyPredictions.length ? <DailySpendForecastChart data={dailyPredictions} /> : <EmptyState title="Daily forecast unavailable" detail="Refresh after adding dated expenses." />}
+      </Card>
+      <Card>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
           <div className="section-title" style={{ margin: 0 }}>Projected Net Worth</div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <Badge tone="ai">Engine: FinGear Predictive Twin v2.0</Badge>
-            <Badge tone="info">Forecast starts from {new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}</Badge>
+            <Badge tone="info">Starts from {new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}</Badge>
+            <select value={period} onChange={(e) => setPeriod(Number(e.target.value))} style={{ fontSize: '13px', padding: '4px 8px' }}>
+              {[6,12,24,36,60].map((m) => <option value={m} key={m}>{m} months</option>)}
+            </select>
           </div>
         </div>
         <NetWorthChart data={forecast.months || []} />
+      </Card>
+      <Card glow>
+        <ProgressiveMLArchitecture
+          dataMaturityDays={forecast.metrics?.data_maturity_days ?? (forecast.assumptions?.days_trained ?? (aiForecast?.data_maturity_days || 0))}
+          activeModel={forecast.model_type || (forecast.mode?.includes("Random Forest") ? "user_random_forest" : (aiForecast?.model_type || "statistical_rule_7d"))}
+          featureImportances={forecast.feature_importances || aiForecast?.feature_importances || {}}
+          architecture={forecast.architecture || aiForecast?.architecture}
+          defaultExpandedFeatures={false}
+        />
       </Card>
       <Card>
         <div className="section-title">Forecast assumptions & Cash Flow Engine</div>

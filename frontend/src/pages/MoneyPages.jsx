@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { AllocationChart, NetWorthChart, getAssetColor } from "../components/charts";
 import { Badge, Button, Card, ConfirmModal, EmptyState, Field, MetricCard, NumberInput, PageHeader, Progress, QuickLinks } from "../components/ui";
 import { useFinance } from "../context/FinanceContext";
+import { canonicalCategory } from "../lib/categories";
 import { currency, percent } from "../lib/format";
 
 function defaultTargetDate() {
@@ -26,6 +27,7 @@ function getCategoryTag(category, type) {
   if (type === "income") return { label: "Income", tone: "success" };
   if (SAVINGS_SET.has(category)) return { label: "Savings", tone: "success" };
   if (NEEDS_SET.has(category)) return { label: "Need", tone: "info" };
+  if (canonicalCategory(category) === "Food & Dining") return { label: "Food & Dining", tone: "info" };
   return { label: "Want", tone: "warning" };
 }
 
@@ -134,7 +136,7 @@ export function Transactions() {
   const categoriesList = useMemo(() => {
     const set = new Set();
     (transactions.transactions || []).forEach((t) => {
-      if (t.category) set.add(t.category);
+      if (t.category) set.add(canonicalCategory(t.category));
     });
     return Array.from(set).sort();
   }, [transactions.transactions]);
@@ -150,7 +152,7 @@ export function Transactions() {
       const cat = txn.category || "";
       const matchesQuery = !query || `${desc} ${cat}`.toLowerCase().includes(query.toLowerCase());
       const matchesType = filterType === "all" || txn.type === filterType;
-      const matchesCategory = filterCategory === "all" || txn.category === filterCategory;
+      const matchesCategory = filterCategory === "all" || canonicalCategory(txn.category) === filterCategory;
       return matchesQuery && matchesType && matchesCategory;
     });
   }, [transactions.transactions, query, filterType, filterCategory]);
@@ -587,6 +589,7 @@ export function Transactions() {
                     const isRec = Boolean(txn.is_recurring || (txn.description || "").includes("(Auto-Recurring)"));
                     const descClean = cleanDescription(txn.description || "");
                     const isCredit = txn.type === "income";
+                    const isAnomaly = Boolean(txn.anomaly_flag && !txn.acknowledged);
 
                     return (
                       <tr key={txn.id} className={txn.anomaly_flag ? "anomaly-row" : ""}>
@@ -596,6 +599,7 @@ export function Transactions() {
                         <td>
                           <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
                             <span style={{ fontWeight: 600 }}>{descClean}</span>
+                            {isAnomaly && <Badge tone="danger">Anomaly{txn.anomaly_score ? ` · ${(txn.anomaly_score * 100).toFixed(0)}%` : ""}</Badge>}
                             {isRec && <span className="rec-tag">Recurring</span>}
                             {txn.bill_url && (
                               <a
@@ -610,7 +614,7 @@ export function Transactions() {
                           </div>
                         </td>
                         <td>
-                          <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{txn.category}</span>
+                          <span style={{ fontSize: "12px", color: "var(--text-secondary)" }} title={txn.category}>{canonicalCategory(txn.category)}</span>
                         </td>
                         <td>
                           <Badge tone={getCategoryTag(txn.category, txn.type).tone}>
@@ -623,7 +627,7 @@ export function Transactions() {
                           </span>
                         </td>
                         <td style={{ textAlign: "center" }}>
-                          {txn.anomaly_flag && !txn.acknowledged ? (
+                          {isAnomaly ? (
                             <div style={{ display: "inline-flex", gap: "4px" }}>
                               <button
                                 className="icon-button"
@@ -1842,6 +1846,9 @@ export function Investments() {
 
   const emergencyRunway = useMemo(() => {
     const ef = Number(profile?.emergency_fund) || 0;
+    const savings = Number(profile?.savings_balance) || 0;
+    // Canonical liquid reserves = max(emergency_fund, savings_balance)
+    const liquidReserves = Math.max(ef, savings);
     const expList = profile?.detailed_expenses?.length ? profile.detailed_expenses : (profile?.monthly_expenses || []);
     let expTotal = expList.reduce((acc, item) => acc + (Number(item?.amount) || 0), 0);
     if (expTotal <= 0 && Number(profile?.monthly_income) > 0) {
@@ -1849,7 +1856,7 @@ export function Investments() {
     }
     const debtEmi = Number(profile?.monthly_debt_payment) || 0;
     const monthlyBurn = Math.max(expTotal + debtEmi, 1);
-    return (ef / monthlyBurn).toFixed(1);
+    return (liquidReserves / monthlyBurn).toFixed(1);
   }, [profile]);
 
   return (

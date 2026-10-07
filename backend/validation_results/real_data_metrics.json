@@ -1,0 +1,162 @@
+{
+  "checksums_sha256": {
+    "fraud": "b7efcb35a428bbe22347a05d2437d9177bab07ce61e51214a17bec584ad9496d",
+    "retail": "a2f79bbdd4463df6db8a3f5a50b9c980ae8f645a370bf5e2c0d6097f9e817b05"
+  },
+  "generated_at": "2026-10-04T13:29:14.209235+05:30",
+  "environment": {
+    "python": "3.11.9",
+    "numpy": "2.2.1",
+    "pandas": "2.2.3",
+    "scikit_learn": "1.6.0"
+  },
+  "code_sha256": {
+    "anomaly_detector": "73eb96a244049fa35f148fd7a7b1f229f6f17a49d394b6eb14d76995eb59552f",
+    "forecasting": "e41f6a8d14c13931e8e6287e993019514f008c3707b89cb03d70ccbf006213df",
+    "validation_harness": "82d68bea25a948c7ed1ced690f6e665fc8d754e1308327251a60516ba7eff4b1"
+  },
+  "fraud": {
+    "dataset": {
+      "name": "Credit Card Fraud Detection (Worldline/ULB)",
+      "rows": 284807,
+      "fraud_rows": 492,
+      "fraud_prevalence_percent": 0.1727485630620034,
+      "evaluated_rows": 142404,
+      "evaluated_fraud_rows": 223,
+      "evaluated_prevalence_percent": 0.15659672481110082,
+      "temporal_folds": [
+        {
+          "fold": 1,
+          "train_rows": 142403,
+          "test_rows": 28481,
+          "test_fraud": 91,
+          "tp": 31,
+          "fp": 5972,
+          "tn": 22418,
+          "fn": 60
+        },
+        {
+          "fold": 2,
+          "train_rows": 170884,
+          "test_rows": 28480,
+          "test_fraud": 24,
+          "tp": 11,
+          "fp": 9277,
+          "tn": 19179,
+          "fn": 13
+        },
+        {
+          "fold": 3,
+          "train_rows": 199364,
+          "test_rows": 28481,
+          "test_fraud": 33,
+          "tp": 15,
+          "fp": 8441,
+          "tn": 20007,
+          "fn": 18
+        },
+        {
+          "fold": 4,
+          "train_rows": 227845,
+          "test_rows": 28481,
+          "test_fraud": 53,
+          "tp": 10,
+          "fp": 7198,
+          "tn": 21230,
+          "fn": 43
+        },
+        {
+          "fold": 5,
+          "train_rows": 256326,
+          "test_rows": 28481,
+          "test_fraud": 22,
+          "tp": 8,
+          "fp": 6338,
+          "tn": 22121,
+          "fn": 14
+        }
+      ]
+    },
+    "protocol": {
+      "split": "Five expanding-window temporal folds; each test fold is the next 10% of ordered records.",
+      "training_labels_used": false,
+      "fixed_detector_threshold": "Existing detector threshold; no tuning on holdout data.",
+      "detector_phases": [
+        0
+      ],
+      "input_features": "Amount and elapsed transaction time mapped to existing amount/date fields; one Other category.",
+      "ignored_source_features": "PCA features V1-V28 are unavailable to the production detector and were not used."
+    },
+    "metrics": {
+      "tp": 75,
+      "fp": 37226,
+      "tn": 104955,
+      "fn": 148,
+      "accuracy_percent": 73.75495070363192,
+      "precision_percent": 0.20106699552290822,
+      "precision_95ci_percent": [
+        0.1604492355265781,
+        0.25194120335951004
+      ],
+      "recall_percent": 33.6322869955157,
+      "recall_95ci_percent": [
+        27.754984056009917,
+        40.0639697866715
+      ],
+      "specificity_percent": 73.81788002616383,
+      "false_positive_rate_percent": 26.182119973836166,
+      "f1": 0.003997441637352094,
+      "balanced_accuracy_percent": 53.72508351083977,
+      "mcc": 0.006699947955074444,
+      "roc_auc": 0.43192341234470816,
+      "pr_auc_trapezoidal": 0.1693942456990941,
+      "average_precision": 0.0015843861955739057,
+      "unique_score_count": 8834,
+      "score_saturated_at_one_percent": 26.230302519592147,
+      "no_alert_baseline_accuracy_percent": 99.8434032751889,
+      "no_alert_baseline_recall_percent": 0.0,
+      "mean_inference_latency_ms": 0.02532099239089464
+    }
+  },
+  "retail": {
+    "dataset": {
+      "name": "UCI Online Retail",
+      "source_rows": 541909,
+      "usable_rows": 541909,
+      "daily_observations": 374,
+      "first_date": "2010-12-01",
+      "last_date": "2011-12-09",
+      "target_definition": "Daily net line value in GBP (Quantity \u00d7 UnitPrice); negative cancellation/return lines retained; zero-activity calendar days set to zero.",
+      "evaluated_days": 75
+    },
+    "protocol": {
+      "split": "Chronological expanding-window one-day-ahead walk-forward; final 20% of calendar days held out.",
+      "minimum_history_days": 299,
+      "baselines": "Previous calendar day and same weekday one week earlier."
+    },
+    "metrics": {
+      "random_forest": {
+        "mae_gbp": 10412.534520000001,
+        "rmse_gbp": 15588.911441214568,
+        "wape_percent": 24.702634448422845
+      },
+      "previous_day_baseline": {
+        "mae_gbp": 21522.673453333337,
+        "rmse_gbp": 28158.00236823948,
+        "wape_percent": 51.06026142331272
+      },
+      "weekly_seasonal_baseline": {
+        "mae_gbp": 12894.905053333332,
+        "rmse_gbp": 18933.445966575295,
+        "wape_percent": 30.591795414245965
+      },
+      "mae_skill_vs_previous_day_percent": 51.62062676564303,
+      "mae_skill_vs_weekly_baseline_percent": 19.250785663533353,
+      "mean_inference_latency_ms": 146.7940106666841
+    }
+  },
+  "sources": {
+    "fraud_url": "https://www.openml.org/d/1597",
+    "retail_url": "https://doi.org/10.24432/C5BW33"
+  }
+}

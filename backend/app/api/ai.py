@@ -14,7 +14,9 @@ from fastapi import APIRouter, Depends
 
 from app.core.security import get_current_user_id
 from app.ml.ai_engine import ai_engine
+from app.ml.forecasting import effective_monthly_expenses
 from app.repositories import memory
+from app.schemas.finance import FinancialProfile
 
 router = APIRouter(prefix="/ai", tags=["ai-engine"])
 
@@ -32,11 +34,14 @@ def ai_forecast(user_id: str = Depends(get_current_user_id)) -> dict:
     """Tomorrow's predicted spend, monthly projections, model confidence."""
     state = memory.state_copy(user_id)
     profile = state["profile"]
+    financial_profile = FinancialProfile(**profile)
     return ai_engine.get_forecast(
         user_id=user_id,
         transactions=state["transactions"],
         current_balance=profile.get("savings_balance", 0),
         monthly_income=profile.get("monthly_income", 0),
+        salary_day=profile.get("salary_day", 1),
+        monthly_expenses=effective_monthly_expenses(financial_profile),
         monthly_pot_contributions=sum(
             e.get("amount", 0) for e in profile.get("monthly_expenses", [])
             if e.get("category") in ("Investment", "Savings")

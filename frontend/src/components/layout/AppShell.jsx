@@ -1,6 +1,6 @@
 import { LogOut, Menu, Search, Sparkles, X, Landmark, ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { Outlet, Link, useLocation } from "react-router-dom";
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useFinance } from "../../context/FinanceContext";
 import { MenuOverlay } from "./MenuOverlay";
@@ -21,6 +21,7 @@ const PAGE_TITLES = {
   "/simulator": "What-if Simulator",
   "/simulator/history": "Scenario History",
   "/copilot": "AI Copilot",
+  "/ai": "AI Intelligence",
   "/insights": "AI Insights",
   "/timeline": "Financial Timeline",
   "/reports": "Reports",
@@ -30,10 +31,23 @@ const PAGE_TITLES = {
 
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [moduleSearch, setModuleSearch] = useState("");
+  const [showModuleResults, setShowModuleResults] = useState(false);
   const { user, logout } = useAuth();
   const { error } = useFinance();
   const location = useLocation();
-  const currentPage = PAGE_TITLES[location.pathname] || "Dashboard";
+  const navigate = useNavigate();
+  const routePath = location.pathname.replace(/\/+$/, "") || "/";
+  const currentPage = PAGE_TITLES[routePath] || routePath.split("/").filter(Boolean).pop()?.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "FinGear";
+  const matchingModules = Object.entries(PAGE_TITLES)
+    .filter(([, title]) => title.toLowerCase().includes(moduleSearch.trim().toLowerCase()))
+    .slice(0, 6);
+
+  function openModule(path) {
+    navigate(path);
+    setModuleSearch("");
+    setShowModuleResults(false);
+  }
 
   return (
     <div className="product-shell">
@@ -52,9 +66,35 @@ export function AppShell() {
           </div>
         </div>
         
-        <div className="search-box">
+        <div className="search-box" onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setShowModuleResults(false);
+        }}>
           <Search size={16} />
-          <input type="text" placeholder="Search modules…" style={{ border: 'none', background: 'transparent', boxShadow: 'none', padding: 0, minHeight: 'auto', outline: 'none', color: 'inherit', flex: 1 }} />
+          <input
+            type="search"
+            placeholder="Search modules…"
+            aria-label="Search modules"
+            aria-expanded={showModuleResults && Boolean(moduleSearch.trim())}
+            aria-controls="module-search-results"
+            value={moduleSearch}
+            onFocus={() => setShowModuleResults(true)}
+            onChange={(event) => setModuleSearch(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setShowModuleResults(false);
+              if (event.key === "Enter" && matchingModules.length) openModule(matchingModules[0][0]);
+            }}
+            style={{ width: 'auto', minWidth: 0, border: 'none', background: 'transparent', boxShadow: 'none', padding: 0, minHeight: 'auto', outline: 'none', color: 'inherit', flex: 1 }}
+          />
+          {showModuleResults && moduleSearch.trim() && (
+            <div id="module-search-results" className="module-search-results">
+              {matchingModules.length ? matchingModules.map(([path, title]) => (
+                <button key={path} type="button" onClick={() => openModule(path)}>
+                  <span>{title}</span>
+                  <ChevronRight size={14} aria-hidden="true" />
+                </button>
+              )) : <p>No modules found</p>}
+            </div>
+          )}
         </div>
         
         <div className="top-actions">

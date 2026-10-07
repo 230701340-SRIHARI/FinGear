@@ -121,6 +121,21 @@ export const NetWorthChart = memo(function NetWorthChart({ data = [] }) {
   );
 });
 
+export const DailySpendForecastChart = memo(function DailySpendForecastChart({ data = [] }) {
+  const c = useChartColors();
+  return (
+    <ResponsiveContainer width="100%" height={280}>
+      <LineChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+        <XAxis dataKey="day" stroke={c.axis} tick={{ fontSize: 12 }} />
+        <YAxis stroke={c.axis} tick={{ fontSize: 12 }} tickFormatter={(value) => currency(value, true)} />
+        <Tooltip contentStyle={c.tooltip} formatter={(value) => currency(value)} />
+        <Line type="monotone" dataKey="predicted_spend" name="Predicted spend" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+});
+
 export const IncomeExpenseChart = memo(function IncomeExpenseChart({ data = [] }) {
   const c = useChartColors();
   return (

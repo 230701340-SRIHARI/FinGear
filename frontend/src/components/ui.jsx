@@ -43,10 +43,12 @@ export function MetricCard({ icon, label, value, detail, tone = "info" }) {
   );
 }
 
-export function Progress({ value, tone = "success" }) {
+export function Progress({ value, tone = "success", style = {}, className = "", ...props }) {
+  const num = Number(value);
+  const safeVal = Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : 0;
   return (
-    <div className="progress">
-      <span className={`progress-fill progress-${tone}`} style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
+    <div className={`progress ${className}`.trim()} style={{ width: "100%", ...style }} {...props}>
+      <span className={`progress-fill progress-${tone}`} style={{ width: `${safeVal}%` }} />
     </div>
   );
 }

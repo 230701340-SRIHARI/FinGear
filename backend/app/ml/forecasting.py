@@ -44,6 +44,10 @@ class ForecastResult:
     months: list[dict]
     is_ml_active: bool = True
     model_type: str = "statistical_rule_7d"
+    predicted_tomorrow: float = 0.0
+    feature_importances: dict = field(default_factory=dict)
+    daily_predictions: list[dict] = field(default_factory=list)
+    architecture: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -58,6 +62,100 @@ class DailyForecastResult:
     days_until_ready: int
     model_type: str  # "statistical_rule_7d" or "user_random_forest"
     feature_importances: dict = field(default_factory=dict)
+    daily_predictions: list[dict] = field(default_factory=list)
+    architecture: dict = field(default_factory=dict)
+
+
+def get_progressive_ml_architecture(distinct_days: int, feature_importances: Optional[dict] = None) -> dict:
+    """Returns canonical Progressive ML Architecture schema, active tiers, and input features."""
+    importances = feature_importances or {}
+    return {
+        "title": "Progressive ML Architecture",
+        "active_tier_id": "user_random_forest" if distinct_days >= 7 else "statistical_baseline",
+        "distinct_days": distinct_days,
+        "tiers": [
+            {
+                "id": "statistical_baseline",
+                "label": "Limited Data",
+                "arrow": "➔",
+                "model": "Statistical Baseline",
+                "condition": "< 7 Expense Days",
+                "description": "Exponential moving averages, day-of-week seasonality, and salary-cycle proximity.",
+                "is_active": distinct_days < 7,
+                "is_completed": distinct_days >= 7,
+            },
+            {
+                "id": "user_random_forest",
+                "label": "≥ 7 Expense Days",
+                "arrow": "➔",
+                "model": "User-specific Random Forest",
+                "condition": "≥ 7 Expense Days",
+                "description": "Autoregressive ensemble regressor custom-trained dynamically on individual spending patterns.",
+                "is_active": distinct_days >= 7,
+                "is_completed": distinct_days >= 7,
+            },
+            {
+                "id": "arima_supported",
+                "label": "Established Time Series",
+                "arrow": "➔",
+                "model": "ARIMA-supported Forecasting",
+                "condition": "Horizon Projections (12–60m)",
+                "description": "ARIMA(1,1,1) autoregressive integrated moving average trend modeling blended with cash flow.",
+                "is_active": False,
+                "is_completed": True,
+            },
+        ],
+        "input_features": [
+            {
+                "key": "rolling_3d_mean",
+                "name": "Rolling 3D Mean",
+                "description": "3-day trailing expense moving average (short-term momentum)",
+                "importance": float(importances.get("rolling_3d_mean", 0.0)),
+            },
+            {
+                "key": "rolling_7d_mean",
+                "name": "Rolling 7D Mean",
+                "description": "7-day trailing expense average (weekly baseline spending)",
+                "importance": float(importances.get("rolling_7d_mean", 0.0)),
+            },
+            {
+                "key": "rolling_7d_std",
+                "name": "Rolling 7D Volatility",
+                "description": "7-day expense standard deviation (variance & surge risk)",
+                "importance": float(importances.get("rolling_7d_std", 0.0)),
+            },
+            {
+                "key": "day_of_week",
+                "name": "Day of Week",
+                "description": "Weekly cyclical seasonality index (0=Monday, 6=Sunday)",
+                "importance": float(importances.get("day_of_week", 0.0)),
+            },
+            {
+                "key": "day_of_month",
+                "name": "Day of Month",
+                "description": "Calendar day phase across monthly billing cycle (1–31)",
+                "importance": float(importances.get("day_of_month", 0.0)),
+            },
+            {
+                "key": "is_weekend",
+                "name": "Weekend Indicator",
+                "description": "Discretionary leisure & recreational surge flag (Sat/Sun)",
+                "importance": float(importances.get("is_weekend", 0.0)),
+            },
+            {
+                "key": "days_since_salary",
+                "name": "Days Since Salary",
+                "description": "Payday liquidity decay factor and cyclical replenishment window",
+                "importance": float(importances.get("days_since_salary", 0.0)),
+            },
+            {
+                "key": "prev_day_spend",
+                "name": "Previous Day Spend",
+                "description": "Autoregressive Lag-1 daily expenditure momentum",
+                "importance": float(importances.get("prev_day_spend", 0.0)),
+            },
+        ],
+    }
 
 
 def _extract_daily_expenses(transactions: list[dict]) -> pd.Series:
@@ -110,6 +208,19 @@ def _get_arima_fit():
                 _CACHED_ARIMA_FIT = None
         _ARIMA_LOADED = True
     return _CACHED_ARIMA_FIT
+
+
+def effective_monthly_expenses(profile: FinancialProfile) -> float:
+    """Use the same adaptive expense baseline for horizon and daily forecasts."""
+    expenses = total_expenses(profile)
+    if profile.monthly_income > 0:
+        tier_info = get_income_tier_info(profile.monthly_income, profile)
+        tier_benchmark = profile.monthly_income * (
+            float(tier_info.get("needs_pct", 50.0)) + float(tier_info.get("wants_pct", 30.0))
+        ) / 100.0
+        if expenses < tier_benchmark * 0.5:
+            expenses = round(tier_benchmark, 2)
+    return expenses
 
 
 class StatisticalRuleForecaster:
@@ -373,6 +484,15 @@ class UserForecastingEngine:
         projected_monthly = predicted_tomorrow * 30.0
         projected_savings = max(0.0, inc - projected_monthly - monthly_pot_contributions)
 
+        daily_predictions = self.forecast_next_days(transactions)
+        daily_predictions[0].update({
+            "predicted_spend": round(predicted_tomorrow, 2),
+            "confidence": confidence,
+            "model_type": model_type,
+        })
+
+        architecture = get_progressive_ml_architecture(distinct_days, importances)
+
         return DailyForecastResult(
             predicted_tomorrow=round(predicted_tomorrow, 2),
             projected_monthly_total=round(projected_monthly, 2),
@@ -384,7 +504,39 @@ class UserForecastingEngine:
             days_until_ready=days_until_ready,
             model_type=model_type,
             feature_importances=importances,
+            daily_predictions=daily_predictions,
+            architecture=architecture,
         )
+
+    def forecast_next_days(self, transactions: list[dict], days: int = 7) -> list[dict]:
+        """Forecast daily spend for the next several calendar days from all dated expenses."""
+        daily_series = _extract_daily_expenses(transactions)
+        fallback_daily = max(200.0, (self.monthly_expenses / 30.0) if self.monthly_expenses > 0 else (self.monthly_income * 0.5 / 30.0))
+        predictions = []
+
+        for offset in range(1, max(days, 1) + 1):
+            target_date = date.today() + timedelta(days=offset)
+            if len(daily_series) >= 7:
+                predicted, confidence, _ = self.rf_forecaster.train_and_predict(daily_series, target_date=target_date)
+                model_type = "user_random_forest"
+            else:
+                predicted, confidence, _ = StatisticalRuleForecaster.forecast_tomorrow(
+                    daily_series=daily_series,
+                    salary_day=self.salary_day,
+                    fallback_daily_rate=fallback_daily,
+                    target_date=target_date,
+                )
+                model_type = "statistical_rule_7d"
+
+            predictions.append({
+                "date": target_date.isoformat(),
+                "day": target_date.strftime("%a %d"),
+                "predicted_spend": predicted,
+                "confidence": confidence,
+                "model_type": model_type,
+            })
+
+        return predictions
 
     def forecast_horizon(
         self,
@@ -397,11 +549,7 @@ class UserForecastingEngine:
         Blends user-specific Random Forest spending projection + ARIMA time series trend + adaptive cash flow.
         """
         tier_info = get_income_tier_info(profile.monthly_income, profile)
-        expenses = total_expenses(profile)
-        if profile.monthly_income > 0:
-            tier_bench_expenses = round(profile.monthly_income * ((float(tier_info.get("needs_pct", 50.0)) + float(tier_info.get("wants_pct", 30.0))) / 100.0), 2)
-            if expenses < tier_bench_expenses * 0.5:
-                expenses = tier_bench_expenses
+        expenses = effective_monthly_expenses(profile)
 
         cash_flow = max(0.0, float(profile.monthly_income or 0.0) - expenses - float(profile.monthly_debt_payment or 0.0))
 
@@ -491,10 +639,22 @@ class UserForecastingEngine:
             model_type = "statistical_rule_7d"
             confidence = 82
 
+        daily_engine = UserForecastingEngine(
+            salary_day=profile.salary_day or 1,
+            monthly_income=profile.monthly_income,
+            monthly_expenses=expenses,
+        )
+        daily_result = daily_engine.forecast_daily(
+            transactions=transactions or [],
+            monthly_income=profile.monthly_income,
+        )
+
         return ForecastResult(
             mode=mode,
             model_version="Unified-v2.0-RF",
             confidence=confidence,
+            predicted_tomorrow=daily_result.predicted_tomorrow,
+            feature_importances=daily_result.feature_importances,
             assumptions={
                 "model_engine": "app.ml.forecasting.UserForecastingEngine",
                 "days_trained": distinct_days,
@@ -511,6 +671,8 @@ class UserForecastingEngine:
             months=rows,
             is_ml_active=True,
             model_type=model_type,
+            daily_predictions=daily_result.daily_predictions,
+            architecture=get_progressive_ml_architecture(distinct_days, daily_result.feature_importances),
         )
 
 
@@ -534,12 +696,15 @@ class ForecastEngine:
         if user_id:
             from app.repositories import memory
             rev = memory.get_user_revision(user_id)
-            cached = _HORIZON_CACHE.get((user_id, months))
+            txn_count = len(transactions) if transactions else 0
+            latest_txn = max((str(t.get("date", "")) for t in (transactions or [])), default="")
+            cache_key = (user_id, months, txn_count, latest_txn)
+            cached = _HORIZON_CACHE.get(cache_key)
             if cached and cached[0] == rev:
                 return cached[1]
 
             res = self.engine.forecast_horizon(profile, months=months, transactions=transactions)
-            _HORIZON_CACHE[(user_id, months)] = (rev, res)
+            _HORIZON_CACHE[cache_key] = (rev, res)
             return res
 
         return self.engine.forecast_horizon(profile, months=months, transactions=transactions)

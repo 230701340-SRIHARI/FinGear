@@ -421,13 +421,16 @@ def run_anomaly_detection_validation(
     fpr = (fp / max(fp + tn, 1)) * 100.0
 
     from sklearn.metrics import roc_auc_score
-    try:
-        auc_score = float(roc_auc_score(y_true_arr, np.array(scores)))
-    except Exception:
-        auc_score = 0.99
+    if len(np.unique(y_true_arr)) < 2:
+        raise ValueError("ROC-AUC requires both normal and anomalous test samples.")
+    auc_score = float(roc_auc_score(y_true_arr, np.array(scores)))
+    normal_count = int(np.sum(y_true_arr == False))
+    anomaly_count = int(np.sum(y_true_arr == True))
 
     metrics = {
         "samples_evaluated": total,
+        "normal_samples": normal_count,
+        "anomaly_samples": anomaly_count,
         "true_positives": tp,
         "false_positives": fp,
         "true_negatives": tn,
@@ -670,20 +673,20 @@ def generate_plaintext_report(
         "",
         "3. ANOMALY DETECTION RESULTS (K-Means + Neural Autoencoder Ensemble)",
         "--------------------------------------------------------------------------------",
-        f"  - Test Set Evaluated      : 300 real-world transactions (240 normal, 60 anomalous)",
+        f"  - Test Set Evaluated      : {a['samples_evaluated']} synthetic transactions ({a['normal_samples']} normal, {a['anomaly_samples']} anomalous)",
         f"  - Overall Accuracy        : {a['accuracy_percent']}%",
-        f"  - Precision               : {a['precision_percent']}% (Zero false alarms on normal spend)",
-        f"  - Detection Rate (Recall) : {a['recall_percent']}% (47 of 60 anomalies intercepted)",
-        f"  - False Positive Rate     : 0.0% (No spam warnings to users)",
+        f"  - Precision               : {a['precision_percent']}%",
+        f"  - Detection Rate (Recall) : {a['recall_percent']}% ({a['true_positives']} of {a['anomaly_samples']} anomalies intercepted)",
+        f"  - False Positive Rate     : {a['false_positive_rate_percent']}%",
         f"  - ROC-AUC Separability    : {a['roc_auc_score']}",
         f"  - Average Response Time   : {a['average_latency_ms']} ms per transaction",
         f"  - Visual Graph Generated  : 2_anomaly_detection_scatter.png",
         "",
         "  CONFUSION MATRIX BREAKDOWN:",
-        f"    * True Negatives  (Normal spend cleared)  : {a['true_negatives']} / 240 (100.0%)",
-        f"    * True Positives  (Anomalies caught)      : {a['true_positives']} / 60  (78.3%)",
-        f"    * False Positives (False alarms)          : {a['false_positives']} (0.0%)",
-        f"    * False Negatives (Missed subtle outliers): {a['false_negatives']}",
+        f"    * True Negatives  (Normal spend cleared)  : {a['true_negatives']} / {a['normal_samples']} ({a['true_negatives'] / max(a['normal_samples'], 1) * 100:.1f}%)",
+        f"    * True Positives  (Anomalies caught)      : {a['true_positives']} / {a['anomaly_samples']} ({a['recall_percent']:.1f}%)",
+        f"    * False Positives (False alarms)          : {a['false_positives']} ({a['false_positive_rate_percent']:.1f}% of normal transactions)",
+        f"    * False Negatives (Missed anomalies)      : {a['false_negatives']} ({a['false_negatives'] / max(a['anomaly_samples'], 1) * 100:.1f}% of anomalies)",
         "",
         "4. FINANCIAL HEALTH NETWORK RESULTS (Across 5 Income Slabs)",
         "--------------------------------------------------------------------------------",

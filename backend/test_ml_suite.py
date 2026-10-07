@@ -3,8 +3,9 @@ Comprehensive ML Suite & Per-User Isolation Verification Script.
 """
 
 from app.ml.ai_engine import ai_engine
-from app.ml.ai_engine.anomaly_detector import AnomalyEnsembleManager, extract_features
-from app.ml.forecasting import ForecastEngine
+from app.ml.ai_engine.anomaly_detector import AnomalyEnsembleManager, extract_features, get_universe
+from app.ml.ai_engine.forecast_brain import ForecastBrain
+from app.ml.forecasting import ForecastEngine, UserForecastingEngine, _extract_daily_expenses
 from app.ml.advanced_models import advanced_ml
 from app.schemas.finance import FinancialProfile, ExpenseItem
 from app.services.finance_engine import get_income_tier_info, health_score
@@ -13,6 +14,28 @@ from app.services.finance_engine import get_income_tier_info, health_score
 def test_anomaly_detection():
     print("=== Testing Anomaly Detection Ensemble ===")
     manager = AnomalyEnsembleManager()
+    assert get_universe("Food") == get_universe("Dining") == get_universe("Groceries")
+    assert get_universe(" dining ") == "FOOD"
+
+    dining_history = [
+        {"id": f"d-{i}", "date": f"2026-08-{i:02d}", "category": "Dining", "type": "expense", "amount": 500}
+        for i in range(1, 5)
+    ]
+    manager.train_all(dining_history)
+    dinner = {"id": "dinner-30000", "date": "2026-08-15", "category": "Dining", "type": "expense", "amount": 30_000}
+    dinner_result = manager.detect(dinner)
+    assert dinner_result.is_anomaly, "A $30,000 Dining transaction should exceed the cold-start baseline"
+    assert dinner_result.phase == 0
+
+    mature_history = [
+        {"id": f"m-{i}", "date": f"2026-08-{i:02d}", "category": "Dining", "type": "expense", "amount": 500 + (i % 3) * 100}
+        for i in range(1, 9)
+    ]
+    flagged_dinner = {**dinner, "anomaly_flag": True}
+    manager.train_all(mature_history + [flagged_dinner])
+    mature_result = manager.detect(flagged_dinner)
+    assert mature_result.is_anomaly, "A flagged anomaly must not train itself into the mature baseline"
+    assert mature_result.phase == 1
 
     # Create 10 dummy transactions (mature data)
     txns = [
@@ -32,6 +55,68 @@ def test_anomaly_detection():
     print(f"Anomalous transaction detection: score={res_anomaly.score:.4f}, phase={res_anomaly.phase}, anomaly={res_anomaly.is_anomaly}")
     assert res_anomaly.is_anomaly or res_anomaly.score > 0.5, "Anomaly detection failed to flag huge spending"
     print("✓ Anomaly Ensemble Detector working correctly!")
+
+
+def test_forecast_daily_predictions_include_backfilled_expenses():
+    from datetime import date, timedelta
+
+    history = [
+        {"date": (date.today() - timedelta(days=20 - index)).isoformat(), "type": "expense", "amount": 500 + index}
+        for index in range(21)
+    ]
+    backfilled = {
+        "date": (date.today() - timedelta(days=10)).isoformat(),
+        "type": "expense",
+        "category": "Dining",
+        "amount": 900,
+    }
+    series = _extract_daily_expenses(history + [backfilled])
+    assert backfilled["date"] in {item.strftime("%Y-%m-%d") for item in series.index}
+
+    predictions = UserForecastingEngine(monthly_income=60_000).forecast_next_days(history + [backfilled])
+    assert len(predictions) == 7
+    assert predictions[0]["date"] < predictions[-1]["date"]
+    assert all(item["predicted_spend"] > 0 for item in predictions)
+
+
+def test_ai_and_horizon_tomorrow_predictions_match():
+    profile = FinancialProfile(
+        name="Forecast Parity",
+        monthly_income=60_000,
+        monthly_expenses=[ExpenseItem(category="Food", amount=12_000)],
+        savings_balance=20_000,
+        investments_balance=50_000,
+        total_debt=10_000,
+        monthly_debt_payment=1_000,
+        emergency_fund=15_000,
+        salary_day=15,
+    )
+    from datetime import date, timedelta
+
+    transactions = [
+        {
+            "id": f"parity-{index}",
+            "date": (date.today() - timedelta(days=20 - index)).isoformat(),
+            "category": "Dining",
+            "type": "expense",
+            "amount": 500 + index * 20,
+        }
+        for index in range(21)
+    ]
+    horizon = UserForecastingEngine(
+        salary_day=profile.salary_day,
+        monthly_income=profile.monthly_income,
+        monthly_expenses=12_000,
+    ).forecast_next_days(transactions)
+    ai_result = ForecastBrain().get_forecast(
+        transactions=transactions,
+        current_balance=profile.savings_balance,
+        monthly_income=profile.monthly_income,
+        salary_day=profile.salary_day,
+        monthly_expenses=12_000,
+    )
+    assert horizon == ai_result.daily_predictions
+    assert horizon[0]["predicted_spend"] == ai_result.predicted_tomorrow
 
 
 def test_income_tiers():

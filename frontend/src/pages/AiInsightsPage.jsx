@@ -1,11 +1,12 @@
 import { Activity, AlertTriangle, BrainCircuit, CheckCircle2, CircleDollarSign, Cpu, CreditCard, Database, Home, Layers, LineChart, Receipt, RotateCcw, Shield, ShoppingBag, Sparkles, TrendingUp, Utensils, Zap } from "lucide-react";
 import { useState } from "react";
 import { Badge, Button, Card, ConfirmModal, EmptyState, MetricCard, PageHeader, Progress, QuickLinks } from "../components/ui";
+import { ProgressiveMLArchitecture } from "../components/ProgressiveMLArchitecture";
 import { useFinance } from "../context/FinanceContext";
 import { currency } from "../lib/format";
 
 const UNIVERSE_META = {
-  FOOD: { label: "Food", Icon: Utensils, color: "var(--accent-success)" },
+  FOOD: { label: "Food & Dining", Icon: Utensils, color: "var(--accent-success)" },
   DINING: { label: "Dining", Icon: Utensils, color: "var(--accent-warning)" },
   RENT: { label: "Rent", Icon: Home, color: "var(--accent-info)" },
   EMI: { label: "EMI", Icon: CreditCard, color: "var(--accent-danger)" },
@@ -26,7 +27,7 @@ const UNIVERSE_META = {
 
 function getUniverseMeta(key, info) {
   if (!key) return { label: "Other", Icon: Layers, color: "var(--text-muted)" };
-  
+
   const raw = String(key).trim();
   const cleanKey = raw.replace(/^CATEGORY_/i, "").trim();
   const upperKey = cleanKey.toUpperCase();
@@ -61,7 +62,7 @@ function getUniverseMeta(key, info) {
 }
 
 export function AiInsights() {
-  const { aiStatus, aiForecast, aiAnomalies, acknowledgeAnomaly, resetAI } = useFinance();
+  const { aiStatus, aiForecast, aiAnomalies, acknowledgeAnomaly, resetAI, forecast } = useFinance();
   const [showReset, setShowReset] = useState(false);
   const [acknowledging, setAcknowledging] = useState(null);
 
@@ -76,7 +77,10 @@ export function AiInsights() {
     setShowReset(false);
   }
 
-  const forecastReady = aiForecast && aiForecast.status !== "learning";
+  const effectiveTomorrowSpend = aiForecast?.predicted_tomorrow ?? (forecast?.predicted_tomorrow ?? forecast?.daily_predictions?.[0]?.predicted_spend);
+  const effectiveMaturityDays = aiForecast?.data_maturity_days ?? (forecast?.metrics?.data_maturity_days ?? (forecast?.assumptions?.days_trained || 0));
+  const effectiveModelType = aiForecast?.model_type || forecast?.model_type || (effectiveMaturityDays >= 7 ? "user_random_forest" : "statistical_rule_7d");
+  const forecastReady = Boolean(aiForecast && aiForecast.status !== "learning");
   const anomalyList = aiAnomalies?.anomalies || [];
 
   return (
@@ -96,14 +100,14 @@ export function AiInsights() {
         <MetricCard
           icon={<TrendingUp />}
           label="Tomorrow's Predicted Spend"
-          value={forecastReady ? currency(aiForecast.predicted_tomorrow) : "—"}
+          value={effectiveTomorrowSpend != null ? currency(effectiveTomorrowSpend) : "—"}
           detail={aiForecast?.status_message || "Initializing..."}
           tone={forecastReady ? "success" : "warning"}
         />
         <MetricCard
           icon={<LineChart />}
           label="Projected Monthly Total"
-          value={forecastReady ? currency(aiForecast.projected_monthly_total) : "—"}
+          value={forecastReady && aiForecast.projected_monthly_total != null ? currency(aiForecast.projected_monthly_total) : "—"}
           detail={forecastReady ? `Confidence: ${aiForecast.confidence}%` : "Learning..."}
           tone="info"
         />
@@ -167,10 +171,26 @@ export function AiInsights() {
             </div>
             <div className="ai-forecast-item">
               <span className="ai-forecast-label">Architecture</span>
-              <small className="muted">Linear Regression with SGD (η=0.01), 7-day lookback, /1000 normalization</small>
+              <strong className="ai-forecast-value" style={{ fontSize: "14px" }}>
+                {aiForecast.data_maturity_days >= 7 ? "Random Forest " : "Statistical Baseline"}
+              </strong>
+              <small className="muted">
+                {aiForecast.data_maturity_days >= 7 ? "Dynamic user-trained" : "EWMA + Day-of-week seasonality + Payday lift"}
+              </small>
             </div>
           </div>
         )}
+      </Card>
+
+      {/* ── Progressive ML Architecture Card ─────────────────────────── */}
+      <Card glow>
+        <ProgressiveMLArchitecture
+          dataMaturityDays={effectiveMaturityDays}
+          activeModel={effectiveModelType}
+          featureImportances={aiForecast?.feature_importances || forecast?.feature_importances || {}}
+          architecture={aiForecast?.architecture || forecast?.architecture}
+          defaultExpandedFeatures={true}
+        />
       </Card>
 
       {/* ── Anomaly Detection Panel ──────────────────────────────────── */}

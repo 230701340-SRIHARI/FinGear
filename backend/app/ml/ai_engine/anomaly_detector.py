@@ -8,14 +8,14 @@ Phase 0 (Cold-Start, <8 unique days):
 
 Phase 1 (Mature, ≥8 unique days):
   Ensemble of K-Means Clustering + Neural Autoencoder.
-  Final score = 0.4 × s_kmeans + 0.6 × s_autoencoder
-  Anomaly flagged if score > 0.65
+    Ensemble score = 0.4 × s_kmeans + 0.6 × s_autoencoder
+    Anomaly flagged if ensemble score > 0.65 or amount > 3× the universe median.
 
 Feature representation per transaction:
   x = [clip(amount/5000, 0, 1.5), (dayOfWeek-1)/6, hourOfDay/23]
 
 Category Universes:
-  FOOD     → Food
+    FOOD     → Food, Dining, Groceries
   SHOPPING → Shopping, Entertainment, Lifestyle
   OTHERS   → Housing, Transport, Utilities, Healthcare, Education, Debt, Other, Investment
 """
@@ -28,6 +28,7 @@ from datetime import datetime
 from typing import Optional
 
 import numpy as np
+from app.services.categories import canonical_category
 
 # ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -42,18 +43,35 @@ PHASE0_MIN_TRANSACTIONS = 4
 MEDIAN_MULTIPLIER = 3.0
 
 CATEGORY_UNIVERSE_MAP = {
+    "Food & Dining": "FOOD",
     "Food": "FOOD",
+    "Dining": "FOOD",
+    "Groceries": "FOOD",
+    "Dining Out & Delivery": "FOOD",
+    "Dining Out & Food Delivery": "FOOD",
+    "Food Delivery": "FOOD",
+    "Restaurants": "FOOD",
     "Shopping": "SHOPPING",
     "Entertainment": "SHOPPING",
     "Lifestyle": "SHOPPING",
+    "Travel": "SHOPPING",
     "Housing": "OTHERS",
     "Transport": "OTHERS",
     "Utilities": "OTHERS",
     "Healthcare": "OTHERS",
     "Education": "OTHERS",
+    "Insurance": "OTHERS",
+    "Mandatory EMI": "OTHERS",
     "Debt": "OTHERS",
+    "Extra Loan Repayment": "OTHERS",
     "Other": "OTHERS",
     "Investment": "OTHERS",
+    "Mutual Funds": "OTHERS",
+    "Fixed Deposit": "OTHERS",
+    "Stocks": "OTHERS",
+    "Emergency Fund": "OTHERS",
+    "Gold": "OTHERS",
+    "Provident Fund": "OTHERS",
     "Income": "OTHERS",
     "Scenario change": "OTHERS",
     "Extra investment": "OTHERS",
@@ -65,9 +83,12 @@ UNIVERSE_NAMES = ["FOOD", "SHOPPING", "OTHERS"]
 def get_universe(category: str) -> str:
     if not category:
         return "OTHERS"
-    category_clean = category.strip()
-    if category_clean in CATEGORY_UNIVERSE_MAP:
-        return CATEGORY_UNIVERSE_MAP[category_clean]
+    category_clean = canonical_category(category)
+    normalized = "".join(character for character in category_clean.casefold() if character.isalnum())
+    for known_category, universe in CATEGORY_UNIVERSE_MAP.items():
+        known_normalized = "".join(character for character in known_category.casefold() if character.isalnum())
+        if normalized == known_normalized:
+            return universe
     slug = category_clean.upper().replace(" ", "_").replace("-", "_")
     return f"CATEGORY_{slug}"
 
@@ -77,7 +98,7 @@ def format_universe_display_name(universe: str) -> str:
     if not universe:
         return "Bills & Other"
     if universe == "FOOD":
-        return "Food"
+        return "Food & Dining"
     if universe == "SHOPPING":
         return "Shopping & Entertainment"
     if universe == "OTHERS":
@@ -355,6 +376,13 @@ class AnomalyEnsembleManager:
         Transactions marked with model_training_excluded=True are skipped so that
         user-discarded anomalies never corrupt the learned baseline.
         """
+        # Clear derived baseline statistics before rebuilding them from current data.
+        for brain in self.brains.values():
+            brain.transaction_count = 0
+            brain.unique_days = 0
+            brain.median_amount = 0.0
+            brain.kmeans = KMeansDetector()
+
         # Group transactions by universe dynamically
         grouped: dict[str, list[dict]] = {}
         for txn in transactions:
@@ -362,6 +390,9 @@ class AnomalyEnsembleManager:
                 continue
             # Skip transactions the user has explicitly excluded from training
             if txn.get("model_training_excluded"):
+                continue
+            # Keep unresolved anomalies out of future baselines until acknowledged
+            if txn.get("anomaly_flag") and not txn.get("acknowledged", False):
                 continue
             universe = get_universe(txn.get("category", "Other"))
             grouped.setdefault(universe, []).append(txn)
@@ -420,8 +451,9 @@ class AnomalyEnsembleManager:
 
         # Phase 0: Median rule
         if brain.phase == 0:
-            is_anomaly = amount > MEDIAN_MULTIPLIER * brain.median_amount
-            score = min(amount / max(brain.median_amount * MEDIAN_MULTIPLIER, 1.0), 1.0) if is_anomaly else 0.0
+            amount_limit = max(MEDIAN_MULTIPLIER * brain.median_amount, 1.0)
+            is_anomaly = amount > amount_limit
+            score = min(amount / amount_limit, 1.0)
             return AnomalyResult(
                 is_anomaly=is_anomaly and not transaction.get("acknowledged", False) and not transaction.get("model_training_excluded", False),
                 score=round(score, 4),
@@ -435,8 +467,11 @@ class AnomalyEnsembleManager:
         x = extract_features(transaction)
         s_kmeans = brain.kmeans.score(x)
         s_autoencoder = brain.autoencoder.score(x)
-        score_final = KMEANS_WEIGHT * s_kmeans + AUTOENCODER_WEIGHT * s_autoencoder
-        is_anomaly = score_final > ANOMALY_THRESHOLD
+        ensemble_score = KMEANS_WEIGHT * s_kmeans + AUTOENCODER_WEIGHT * s_autoencoder
+        amount_limit = max(MEDIAN_MULTIPLIER * brain.median_amount, 1.0)
+        amount_score = min(amount / amount_limit, 1.0)
+        score_final = max(ensemble_score, amount_score)
+        is_anomaly = ensemble_score > ANOMALY_THRESHOLD or amount > amount_limit
 
         return AnomalyResult(
             is_anomaly=is_anomaly and not transaction.get("acknowledged", False) and not transaction.get("model_training_excluded", False),
@@ -444,7 +479,7 @@ class AnomalyEnsembleManager:
             phase=1,
             kmeans_score=round(s_kmeans, 4),
             autoencoder_score=round(s_autoencoder, 4),
-            reason=f"Phase 1 ensemble: score {score_final:.3f} ({'ANOMALY' if is_anomaly else 'normal'}) for {disp_name}."
+            reason=f""
         )
 
     def train_on_feedback(self, transaction: dict):

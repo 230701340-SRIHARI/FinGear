@@ -10,13 +10,16 @@ import { demoProfile } from "../lib/demoProfile";
 
 export function Dashboard() {
   const { user } = useAuth();
-  const { dashboard, health, loading, aiForecast, aiAnomalies, addTransaction, profile } = useFinance();
+  const { dashboard, health, loading, forecast, aiForecast, aiAnomalies, addTransaction, profile } = useFinance();
   const kpis = useMemo(() => {
     const baseKpis = dashboard?.kpis ? [...dashboard.kpis] : [];
 
     // Dynamically calculate live runway from the active profile
-    // ensuring 0ms instantaneous reactivity whenever reserves, expenses, or debt change
+    // Canonical liquid reserves = max(emergency_fund, savings_balance)
+    // This matches the financial_health.py EF definition used by the health score engine
     const ef = Number(profile?.emergency_fund) || 0;
+    const savings = Number(profile?.savings_balance) || 0;
+    const liquidReserves = Math.max(ef, savings);
     const expList = profile?.detailed_expenses?.length ? profile.detailed_expenses : (profile?.monthly_expenses || []);
     let expTotal = expList.reduce((acc, item) => acc + (Number(item?.amount) || 0), 0);
     if (expTotal <= 0 && Number(profile?.monthly_income) > 0) {
@@ -24,7 +27,7 @@ export function Dashboard() {
     }
     const debtEmi = Number(profile?.monthly_debt_payment) || 0;
     const monthlyBurn = Math.max(expTotal + debtEmi, 1);
-    const liveRunwayMonths = (ef / monthlyBurn).toFixed(1);
+    const liveRunwayMonths = (liquidReserves / monthlyBurn).toFixed(1);
 
     const runwayTone = Number(liveRunwayMonths) >= 6.0 ? "success" : (Number(liveRunwayMonths) >= 3.0 ? "info" : "warning");
     const runwayDetail = Number(liveRunwayMonths) >= 6.0 ? "Target reached (6+ mos)" : (Number(liveRunwayMonths) >= 3.0 ? "Target is 6 months" : "Below 3-mo benchmark");
@@ -47,6 +50,13 @@ export function Dashboard() {
   const charts = dashboard?.charts || {};
   const forecastReady = aiForecast && aiForecast.status !== "learning";
   const adaptive = health?.adaptive_ratio || dashboard?.health?.adaptive_ratio;
+  const adaptivePulseUsage = (actual, target) => {
+    const targetValue = Number(target) || 0;
+    return targetValue > 0 ? Math.max(0, (Number(actual) || 0) / targetValue * 100) : 0;
+  };
+  const adaptivePulseLimitUsage = (actual, limit) => (
+    limit > 0 ? Math.max(0, (Number(actual) || 0) / limit * 100) : 0
+  );
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -165,9 +175,13 @@ export function Dashboard() {
         {kpiCards}
         <MetricCard
           icon={<Cpu />}
-          label="AI Predicted Spend"
-          value={forecastReady ? currency(aiForecast.predicted_tomorrow) : "Learning..."}
-          detail={forecastReady ? `${aiForecast.confidence}% confidence` : aiForecast?.status_message || "Collecting data"}
+          label="Tomorrow's Spend"
+          value={
+            (aiForecast?.predicted_tomorrow ?? (forecast?.predicted_tomorrow ?? forecast?.daily_predictions?.[0]?.predicted_spend)) != null
+              ? currency(aiForecast?.predicted_tomorrow ?? (forecast?.predicted_tomorrow ?? forecast?.daily_predictions?.[0]?.predicted_spend))
+              : (forecastReady ? "Learning..." : "Collecting data")
+          }
+          detail={forecastReady ? `${aiForecast?.confidence || forecast?.confidence || 85}% confidence` : (aiForecast?.status_message || "Collecting data")}
           tone="ai"
         />
       </section>
@@ -291,7 +305,7 @@ export function Dashboard() {
               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
                 <span style={{ fontSize: "18px", fontWeight: "bold", color: "var(--text-primary)" }}>
                   <Compass size={18} style={{ marginRight: "6px", verticalAlign: "middle", color: "var(--accent-primary)" }} />
-                  Dynamic 50:30:20 Pulse
+                  Dynamic Pulse
                 </span>
                 <Badge tone="info">Tier {adaptive.tier}: {adaptive.tier_name}</Badge>
                 {adaptive.is_adapted ? (
@@ -303,6 +317,7 @@ export function Dashboard() {
               <p style={{ margin: 0, fontSize: "13px", color: "var(--text-secondary)" }}>
                 Dynamically calibrated to your salary tier and actual spending velocity.
               </p>
+              <small className="adaptive-pulse-scale"></small>
             </div>
             <Link to="/profile">
               <Button variant="ghost" style={{ fontSize: "12px", padding: "6px 12px" }}>
@@ -316,13 +331,13 @@ export function Dashboard() {
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
                 <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-secondary)" }}>Needs (Fixed)</span>
                 <strong style={{ fontSize: "14px", color: adaptive.actual_needs_pct > adaptive.ideal_needs_pct ? "var(--accent-warning)" : "var(--text-primary)" }}>
-                  {adaptive.actual_needs_pct}% / {adaptive.ideal_needs_pct}%
+                  {Number(adaptive.actual_needs_pct || 0).toFixed(1)}% of income
                 </strong>
               </div>
-              <Progress value={(adaptive.actual_needs_pct / Math.max(adaptive.ideal_needs_pct, 1)) * 100} tone={adaptive.actual_needs_pct <= adaptive.ideal_needs_pct ? "success" : "warning"} />
+              <Progress value={adaptivePulseLimitUsage(adaptive.actual_needs_pct, 50)} tone={adaptive.actual_needs_pct <= 50 ? "success" : "warning"} className="adaptive-pulse-progress" />
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px", fontSize: "11px", color: "var(--text-muted)" }}>
-                <span>Spent: {currency(adaptive.needs_amount)}</span>
-                <span>Slab Target: {adaptive.ideal_needs_pct}%{adaptive.recommended_needs_amount ? ` (${currency(adaptive.recommended_needs_amount)})` : ""}</span>
+                <span>Limit: 50% · Tier target: {adaptive.ideal_needs_pct}%{adaptive.recommended_needs_amount ? ` (${currency(adaptive.recommended_needs_amount)})` : ""}</span>
+                <span>{adaptivePulseUsage(adaptive.actual_needs_pct, adaptive.ideal_needs_pct).toFixed(0)}% of target · {currency(adaptive.needs_amount)}</span>
               </div>
             </div>
 
@@ -330,25 +345,27 @@ export function Dashboard() {
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
                 <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-secondary)" }}>Wants (Discretionary)</span>
                 <strong style={{ fontSize: "14px", color: adaptive.actual_wants_pct > adaptive.ideal_wants_pct ? "var(--accent-warning)" : "var(--text-primary)" }}>
-                  {adaptive.actual_wants_pct}% / {adaptive.ideal_wants_pct}%
+                  {Number(adaptive.actual_wants_pct || 0).toFixed(1)}% of income
                 </strong>
               </div>
-              <Progress value={(adaptive.actual_wants_pct / Math.max(adaptive.ideal_wants_pct, 1)) * 100} tone={adaptive.actual_wants_pct <= adaptive.ideal_wants_pct ? "success" : "warning"} />
+              <Progress value={adaptivePulseLimitUsage(adaptive.actual_wants_pct, 30)} tone={adaptive.actual_wants_pct <= 30 ? "success" : "warning"} className="adaptive-pulse-progress" />
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px", fontSize: "11px", color: "var(--text-muted)" }}>
-                <span>Spent: {currency(adaptive.wants_amount)}</span>
-                <span>Slab Target: {adaptive.ideal_wants_pct}%{adaptive.recommended_wants_amount ? ` (${currency(adaptive.recommended_wants_amount)})` : ""}</span>
+                <span>Limit: 30% · Tier target: {adaptive.ideal_wants_pct}%{adaptive.recommended_wants_amount ? ` (${currency(adaptive.recommended_wants_amount)})` : ""}</span>
+                <span>{adaptivePulseUsage(adaptive.actual_wants_pct, adaptive.ideal_wants_pct).toFixed(0)}% of target · {currency(adaptive.wants_amount)}</span>
               </div>
             </div>
 
             <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "14px", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
                 <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-secondary)" }}>Savings & Surplus</span>
-                <strong style={{ fontSize: "14px", color: "var(--accent-success)" }}>{adaptive.actual_savings_pct}% / {adaptive.ideal_savings_pct}%</strong>
+                <strong style={{ fontSize: "14px", color: "var(--accent-success)" }}>
+                  {Number(adaptive.actual_savings_pct || 0).toFixed(1)}% of income
+                </strong>
               </div>
-              <Progress value={(adaptive.actual_savings_pct / Math.max(adaptive.ideal_savings_pct, 1)) * 100} tone="success" />
+              <Progress value={adaptivePulseLimitUsage(adaptive.actual_savings_pct, 20)} tone="success" className="adaptive-pulse-progress" />
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px", fontSize: "11px", color: "var(--text-muted)" }}>
-                <span>Capacity: {currency(adaptive.savings_amount)}</span>
-                <span>Slab Target: {adaptive.ideal_savings_pct}%{adaptive.recommended_savings_amount ? ` (${currency(adaptive.recommended_savings_amount)})` : ""}</span>
+                <span>Limit: 20% · Tier target: {adaptive.ideal_savings_pct}%{adaptive.recommended_savings_amount ? ` (${currency(adaptive.recommended_savings_amount)})` : ""}</span>
+                <span>{adaptivePulseUsage(adaptive.actual_savings_pct, adaptive.ideal_savings_pct).toFixed(0)}% of target · {currency(adaptive.savings_amount)}</span>
               </div>
             </div>
           </div>
@@ -420,21 +437,21 @@ export function FinancialTwin() {
         <MetricCard icon={<Activity />} label="Last recalculated" value="2 sec ago" detail="Local demo sync" tone="info" />
         <MetricCard icon={<Gauge />} label="Model completeness" value={activeDebts.length > 0 ? "98%" : "94%"} detail="Profile, goals, debt, budget connected" tone="ai" />
       </section>
-      
+
       <Card className="twin-visual">
         <div className="twin-grid-bg" />
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="twin-lines">
           {/* Foundational Capital & Solvency Triangle: Income (50, 16) -> Assets (22, 44) -> Debt (78, 44) -> Income */}
           <path d="M50 16 L22 44 L78 44 Z" className="twin-triangle" />
-          
+
           {/* Operational Engine Convergence to Cash Flow (50, 56) */}
           <path d="M50 16 L50 56" className="twin-flow-income" />
           <path d="M22 44 L50 56" className="twin-flow-asset" />
           <path d="M78 44 L50 56" className="twin-flow-debt" />
-          
+
           {/* Forward Allocations: Cash Flow -> Goals & Future State */}
           <path d="M50 56 L32 82 M50 56 L68 82" className="twin-flow-allocations" />
-          
+
           {/* Coordinate Joint Markers */}
           <circle cx="50" cy="16" r="1.5" className="twin-joint" />
           <circle cx="22" cy="44" r="1.5" className="twin-joint" />
@@ -660,17 +677,17 @@ export function Help() {
         <Card>
           <div className="section-title">Getting Started</div>
           <div style={{ display: 'grid', gap: '16px' }}>
-            <p><strong>1. Complete your profile</strong><br/>Head to the Profile section and fill in your current financial details. FinGear AI uses this data to generate your initial financial twin.</p>
-            <p><strong>2. Review your forecast</strong><br/>Check the Financial Forecast page to see a projection based on your current inputs.</p>
-            <p><strong>3. Use the Simulator</strong><br/>Before making major financial decisions (e.g. taking a loan, changing jobs), test them in the What-if Simulator.</p>
+            <p><strong>1. Complete your profile</strong><br />Head to the Profile section and fill in your current financial details. FinGear AI uses this data to generate your initial financial twin.</p>
+            <p><strong>2. Review your forecast</strong><br />Check the Financial Forecast page to see a projection based on your current inputs.</p>
+            <p><strong>3. Use the Simulator</strong><br />Before making major financial decisions (e.g. taking a loan, changing jobs), test them in the What-if Simulator.</p>
           </div>
         </Card>
         <Card>
           <div className="section-title">Frequently Asked Questions</div>
           <div style={{ display: 'grid', gap: '16px' }}>
-            <p><strong>Are my details secure?</strong><br/>Yes, all profile data is stored securely. Passwords are hashed, and sessions are encrypted.</p>
-            <p><strong>How accurate is the forecast?</strong><br/>The forecast relies on your accurate input. The model applies statistical projections but actual results depend on real-world factors.</p>
-            <p><strong>Can I export my data?</strong><br/>Reporting is available, and PDF exports are on the roadmap for future updates.</p>
+            <p><strong>Are my details secure?</strong><br />Yes, all profile data is stored securely. Passwords are hashed, and sessions are encrypted.</p>
+            <p><strong>How accurate is the forecast?</strong><br />The forecast relies on your accurate input. The model applies statistical projections but actual results depend on real-world factors.</p>
+            <p><strong>Can I export my data?</strong><br />Reporting is available, and PDF exports are on the roadmap for future updates.</p>
           </div>
         </Card>
       </section>

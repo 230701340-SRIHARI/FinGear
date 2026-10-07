@@ -667,6 +667,7 @@ def add_transaction(user_id: str, transaction: dict) -> dict:
     transaction = {**transaction, "id": transaction.get("id") or str(uuid4())}
     state = get_state(user_id)
     state["transactions"].insert(0, transaction)
+    state["transactions"].sort(key=lambda item: str(item.get("date", ""))[:10], reverse=True)
     # Apply impact to profile assets/liabilities
     _apply_asset_impact(state["profile"], transaction, reverse=False)
     # Sync with postgres
@@ -811,11 +812,25 @@ def delete_simulation(user_id: str, sim_id: str) -> None:
 
 
 def update_budgets(user_id: str, budgets: list[dict]) -> list[dict]:
+    from app.services.categories import canonical_category
+
+    merged = {}
+    for item in budgets:
+        category = canonical_category(item.get("category"))
+        current = merged.setdefault(category, {"category": category, "planned": 0.0, "actual": 0.0})
+        current["planned"] += float(item.get("planned", 0.0))
+        current["actual"] += float(item.get("actual", 0.0))
+    budgets = list(merged.values())
     get_state(user_id)["budgets"] = [dict(b) for b in budgets]
 
     if SessionLocal:
         try:
             db = SessionLocal()
+            wanted_categories = {item.get("category") for item in budgets}
+            existing_budgets = db.query(Budget).filter(Budget.user_id == user_id).all()
+            for existing in existing_budgets:
+                if existing.category not in wanted_categories:
+                    db.delete(existing)
             for item in budgets:
                 db_b = db.query(Budget).filter(Budget.user_id == user_id, Budget.category == item.get("category")).first()
                 if not db_b:

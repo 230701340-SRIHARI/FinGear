@@ -59,6 +59,10 @@ class ForecastResult:
     status: str  # "learning", "inferring", "training"
     status_message: str
     days_until_ready: int
+    daily_predictions: list[dict] = field(default_factory=list)
+    model_type: str = "statistical_rule_7d"
+    feature_importances: dict = field(default_factory=dict)
+    architecture: dict = field(default_factory=dict)
 
 
 class ForecastBrain:
@@ -161,6 +165,8 @@ class ForecastBrain:
         current_balance: float = 0.0,
         monthly_income: float = 0.0,
         monthly_pot_contributions: float = 0.0,
+        salary_day: int = 1,
+        monthly_expenses: float = 0.0,
     ) -> ForecastResult:
         """
         Full forecast pipeline delegating to the unified app.ml.forecasting.UserForecastingEngine.
@@ -169,7 +175,11 @@ class ForecastBrain:
         """
         from app.ml.forecasting import UserForecastingEngine
 
-        engine = UserForecastingEngine(monthly_income=monthly_income)
+        engine = UserForecastingEngine(
+            salary_day=salary_day,
+            monthly_income=monthly_income,
+            monthly_expenses=monthly_expenses,
+        )
         daily_res = engine.forecast_daily(
             transactions=transactions,
             current_balance=current_balance,
@@ -186,6 +196,10 @@ class ForecastBrain:
             status=daily_res.status,
             status_message=daily_res.status_message,
             days_until_ready=daily_res.days_until_ready,
+            daily_predictions=daily_res.daily_predictions,
+            model_type=daily_res.model_type,
+            feature_importances=daily_res.feature_importances,
+            architecture=daily_res.architecture,
         )
 
 

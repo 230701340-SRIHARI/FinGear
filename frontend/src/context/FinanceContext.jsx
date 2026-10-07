@@ -84,7 +84,7 @@ export function FinanceProvider({ children }) {
         transactions,
         budget,
         health,
-        forecast,
+        forecast: forecast || initialData.forecast,
         goals,
         investments,
         debt,
@@ -119,19 +119,35 @@ export function FinanceProvider({ children }) {
           aiForecast,
           aiAnomalies,
         ]) => {
-          setData((current) => ({
-            ...current,
-            insights,
-            timeline,
-            reports,
-            settings,
-            security,
-            scenarioHistory,
-            copilotContext,
-            aiStatus,
-            aiForecast,
-            aiAnomalies,
-          }));
+          setData((current) => {
+            const anomalyById = new Map(
+              (aiAnomalies?.anomalies || []).map(({ transaction, anomaly }) => [String(transaction.id), anomaly])
+            );
+            const currentTransactions = current.transactions?.transactions || [];
+
+            return {
+              ...current,
+              insights,
+              timeline,
+              reports,
+              settings,
+              security,
+              scenarioHistory,
+              copilotContext,
+              aiStatus,
+              aiForecast,
+              aiAnomalies,
+              transactions: {
+                ...current.transactions,
+                transactions: currentTransactions.map((transaction) => {
+                  const anomaly = anomalyById.get(String(transaction.id));
+                  return anomaly
+                    ? { ...transaction, anomaly_flag: true, anomaly_score: anomaly.score }
+                    : transaction;
+                }),
+              },
+            };
+          });
         });
       }
     } catch (err) {
@@ -204,7 +220,7 @@ export function FinanceProvider({ children }) {
       const newTxns = [
         { id: "temp-" + Date.now(), ...transaction, amount },
         ...(current.transactions?.transactions || [])
-      ];
+      ].sort((left, right) => String(right.date || "").slice(0, 10).localeCompare(String(left.date || "").slice(0, 10)));
 
       // Optimistically update dashboard KPIs so runway and net worth update with 0ms latency
       let updatedDashboard = current.dashboard;
@@ -216,7 +232,11 @@ export function FinanceProvider({ children }) {
         }
         const debtEmi = Number(prof.monthly_debt_payment) || 0;
         const burn = Math.max(expTotal + debtEmi, 1);
-        const runway = (Number(prof.emergency_fund || 0) / burn).toFixed(1);
+        // Canonical liquid reserves = max(emergency_fund, savings_balance)
+        const ef = Number(prof.emergency_fund || 0);
+        const savings = Number(prof.savings_balance || 0);
+        const liquidReserves = Math.max(ef, savings);
+        const runway = (liquidReserves / burn).toFixed(1);
         const runwayTone = Number(runway) >= 6.0 ? "success" : (Number(runway) >= 3.0 ? "info" : "warning");
         const runwayDetail = Number(runway) >= 6.0 ? "Target reached (6+ mos)" : (Number(runway) >= 3.0 ? "Target is 6 months" : "Below 3-mo benchmark");
 
@@ -242,7 +262,7 @@ export function FinanceProvider({ children }) {
 
     // 2. Persist to backend and synchronize
     const created = await api.createTransaction(transaction);
-    await refresh("core");
+    await refresh("all");
     return created; // caller can inspect created.anomaly_flag
   }, [refresh]);
 
@@ -310,7 +330,7 @@ export function FinanceProvider({ children }) {
       const forecastData = await api.forecast(period);
       setData((current) => ({
         ...current,
-        forecast: forecastData
+        forecast: forecastData || initialData.forecast
       }));
     } catch (err) {
       console.error("Failed to fetch forecast:", err);

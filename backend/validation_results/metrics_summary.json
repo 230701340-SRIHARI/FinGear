@@ -1,38 +1,40 @@
 {
-  "timestamp": "2026-09-25T23:27:02.718380",
+  "timestamp": "2026-10-04T13:06:25.835029",
   "forecasting": {
     "samples_evaluated": 83,
-    "mae_inr": 207.23,
-    "rmse_inr": 298.8,
-    "mape_percent": 17.55,
-    "accuracy_percent": 82.45,
-    "r2_score": 0.4922,
-    "directional_accuracy_percent": 67.07,
-    "average_latency_ms": 47.06,
+    "mae_inr": 209.94,
+    "rmse_inr": 283.52,
+    "mape_percent": 16.68,
+    "accuracy_percent": 83.32,
+    "r2_score": 0.5628,
+    "directional_accuracy_percent": 58.54,
+    "average_latency_ms": 50.91,
     "feature_importances": {
-      "rolling_3d_mean": 0.03,
-      "rolling_7d_mean": 0.0125,
-      "rolling_7d_std": 0.0197,
-      "day_of_week": 0.1361,
-      "day_of_month": 0.5556,
-      "is_weekend": 0.1506,
-      "days_since_salary": 0.0665,
-      "prev_day_spend": 0.029
+      "rolling_3d_mean": 0.0159,
+      "rolling_7d_mean": 0.0181,
+      "rolling_7d_std": 0.0353,
+      "day_of_week": 0.1803,
+      "day_of_month": 0.4681,
+      "is_weekend": 0.2122,
+      "days_since_salary": 0.0513,
+      "prev_day_spend": 0.0189
     }
   },
   "anomaly_detection": {
     "samples_evaluated": 300,
-    "true_positives": 48,
+    "normal_samples": 240,
+    "anomaly_samples": 60,
+    "true_positives": 57,
     "false_positives": 0,
     "true_negatives": 240,
-    "false_negatives": 12,
-    "accuracy_percent": 96.0,
+    "false_negatives": 3,
+    "accuracy_percent": 99.0,
     "precision_percent": 100.0,
-    "recall_percent": 80.0,
-    "f1_score": 0.8889,
-    "roc_auc_score": 0.999,
+    "recall_percent": 95.0,
+    "f1_score": 0.9744,
+    "roc_auc_score": 0.9988,
     "false_positive_rate_percent": 0.0,
-    "average_latency_ms": 0.051
+    "average_latency_ms": 0.068
   },
   "health_framework": {
     "tier_evaluations": [
@@ -88,7 +90,7 @@
       }
     ],
     "resilience_cap_effective": true,
-    "average_latency_ms": 0.062
+    "average_latency_ms": 0.064
   },
   "advanced_regressors": {
     "mean_predicted_return_percent": 7.86,

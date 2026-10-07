@@ -5,6 +5,7 @@ from datetime import datetime
 
 from app.schemas.finance import FinancialProfile, Scenario
 from app.services.finance_engine import forecast, goal_plan, health_score, monthly_cash_flow, simulate, total_expenses
+from app.services.categories import canonical_category
 from app.ml.advanced_models import advanced_ml
 
 
@@ -45,9 +46,13 @@ def debt_to_income(profile: FinancialProfile) -> float:
 def emergency_runway(profile: FinancialProfile | dict) -> float:
     burn = total_expenses(profile) + float(getattr(profile, "monthly_debt_payment", None) or (profile.get("monthly_debt_payment") if isinstance(profile, dict) else 0.0) or 0.0)
     ef = float(getattr(profile, "emergency_fund", None) or (profile.get("emergency_fund") if isinstance(profile, dict) else 0.0) or 0.0)
+    savings = float(getattr(profile, "savings_balance", None) or (profile.get("savings_balance") if isinstance(profile, dict) else 0.0) or 0.0)
+    # Canonical liquid reserves = max(emergency_fund, savings_balance)
+    # This matches the financial_health.py EF definition used by the health score engine
+    liquid = max(ef, savings)
     if burn <= 0:
         return 0.0
-    return round(ef / burn, 2)
+    return round(liquid / burn, 2)
 
 
 def generate_ai_brief(
@@ -259,7 +264,13 @@ def build_dashboard(
         salutation = "Good evening"
     first_name = (profile.name or "Client").strip().split()[0] if profile.name else "Client"
 
-    runway_val = emergency_runway(profile)
+    # Use health engine's canonical runway (uses transaction-derived NE, not static profile expenses)
+    # This ensures Dashboard KPI matches Financial Health page exactly
+    runway_val = 0.0
+    try:
+        runway_val = float(score["components"][1]["submetrics"]["runway_months"])
+    except (KeyError, IndexError, TypeError):
+        runway_val = emergency_runway(profile)
     runway_tone = "success" if runway_val >= 6.0 else ("info" if runway_val >= 3.0 else "warning")
     runway_detail = "Target reached (6+ mos)" if runway_val >= 6.0 else ("Target is 6 months" if runway_val >= 3.0 else "Below 3-mo benchmark")
 
@@ -415,7 +426,7 @@ def transaction_summary(transactions: list[dict]) -> dict:
     by_category = defaultdict(float)
     for txn in transactions:
         if txn["type"] == "expense":
-            by_category[txn["category"]] += txn["amount"]
+            by_category[canonical_category(txn.get("category"))] += txn["amount"]
     return {
         "income": income,
         "expenses": expenses,

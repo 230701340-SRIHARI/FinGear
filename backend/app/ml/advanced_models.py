@@ -57,4 +57,9 @@ class AdvancedModels:
         features = self._get_features(profile)
         return float(self.goal_model.predict(features)[0])
 
+    def get_progressive_architecture(self, distinct_days: int = 0, feature_importances: dict | None = None) -> dict:
+        """Returns the canonical Progressive ML Architecture schema."""
+        from app.ml.forecasting import get_progressive_ml_architecture
+        return get_progressive_ml_architecture(distinct_days, feature_importances)
+
 advanced_ml = AdvancedModels()

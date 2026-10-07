@@ -127,10 +127,16 @@ class AIEngine:
         current_balance: float = 0.0,
         monthly_income: float = 0.0,
         monthly_pot_contributions: float = 0.0,
+        salary_day: int = 1,
+        monthly_expenses: float = 0.0,
     ) -> dict:
         """Get expense forecast for a user with smart in-memory caching."""
         state = self._get_user(user_id)
-        sig = (len(transactions), current_balance, monthly_income, monthly_pot_contributions)
+        transaction_signature = tuple(
+            (txn.get("id"), txn.get("date"), txn.get("amount"), txn.get("type"), txn.get("category"))
+            for txn in transactions
+        )
+        sig = (transaction_signature, current_balance, monthly_income, monthly_pot_contributions, salary_day, monthly_expenses)
         if state.cached_forecast is not None and state.last_forecast_signature == sig:
             return state.cached_forecast
 
@@ -139,6 +145,8 @@ class AIEngine:
             current_balance=current_balance,
             monthly_income=monthly_income,
             monthly_pot_contributions=monthly_pot_contributions,
+            salary_day=salary_day,
+            monthly_expenses=monthly_expenses,
         )
 
         res_dict = {
@@ -150,6 +158,10 @@ class AIEngine:
             "status": result.status,
             "status_message": result.status_message,
             "days_until_ready": result.days_until_ready,
+            "daily_predictions": result.daily_predictions,
+            "model_type": getattr(result, "model_type", "statistical_rule_7d"),
+            "feature_importances": getattr(result, "feature_importances", {}),
+            "architecture": getattr(result, "architecture", {}),
         }
         state.cached_forecast = res_dict
         state.last_forecast_signature = sig
