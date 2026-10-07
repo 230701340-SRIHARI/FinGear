@@ -42,6 +42,15 @@ htmlcov/
 .eggs/
 
 # Machine Learning Models & Large Artifacts
+backend/app/ml/models/
+*.pkl
+*.joblib
+*.h5
+*.pth
+*.pt
+*.onnx
+*.tflite
+*.pb
 
 # Logs & Runtime Files
 *.log
